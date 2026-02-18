@@ -193,8 +193,18 @@ pub fn run() {
         ])
         .setup(|app| {
             // ── Tray menu ───────────────────────────────────────────────
-            let capture_item =
-                MenuItem::with_id(app, "capture", "New Capture  Ctrl+Shift+E", true, None::<&str>)?;
+            let shortcut_label = if cfg!(target_os = "macos") {
+                "Cmd+Shift+E"
+            } else {
+                "Ctrl+Shift+E"
+            };
+            let capture_item = MenuItem::with_id(
+                app,
+                "capture",
+                &format!("New Capture  {shortcut_label}"),
+                true,
+                None::<&str>,
+            )?;
             let open_item =
                 MenuItem::with_id(app, "open", "Open CodeEye", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;

@@ -7,7 +7,7 @@
   import FirstRun from "$lib/components/FirstRun.svelte";
   import IntegrationHub from "$lib/components/IntegrationHub.svelte";
   import PromptPreview from "$lib/components/PromptPreview.svelte";
-  import RegionOverlay from "$lib/components/RegionOverlay.svelte";
+
   import SessionList from "$lib/components/SessionList.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
@@ -71,7 +71,6 @@
 
   // Capture state
   let imageSrc: string | null = $state(null);
-  let showOverlay = $state(false);
   let isCapturing = $state(false);
   let isDragOver = $state(false);
 
@@ -110,36 +109,46 @@
       // Give the OS time to remove the window from the compositor
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       const base64: string = await invoke("capture_screen", { monitorId: 0 });
-      await win.show();
-      await win.setFocus();
       loadImage(`data:image/png;base64,${base64}`);
     } catch (err) {
-      await win.show();
       console.error("Capture failed:", err);
       toastState.error("Screenshot capture failed");
     } finally {
+      try {
+        await win.show();
+      } catch {
+        /* window may already be visible */
+      }
       isCapturing = false;
     }
   }
 
-  function handleOverlayCancel() {
-    showOverlay = false;
-  }
-
-  /** Open an image from the file manager */
-  function openFromFile() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => loadImage(reader.result as string);
-        reader.readAsDataURL(file);
+  /** Open an image from the file manager using Tauri dialog */
+  async function openFromFile() {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { readFile } = await import("@tauri-apps/plugin-fs");
+      const path = await open({
+        filters: [
+          {
+            name: "Images",
+            extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+          },
+        ],
+      });
+      if (!path) {
+        return;
       }
-    };
-    input.click();
+      const bytes = await readFile(path as string);
+      const binary = Array.from(new Uint8Array(bytes))
+        .map((b) => String.fromCharCode(b))
+        .join("");
+      const base64 = btoa(binary);
+      loadImage(`data:image/png;base64,${base64}`);
+    } catch (err) {
+      console.error("File open failed:", err);
+      toastState.error("Failed to open image file");
+    }
   }
 
   /** Restore a session by ID */
@@ -276,23 +285,19 @@
     sessionState.loadSessions();
   }
 
-  // Listen for global hotkey events emitted from Rust
+  // Listen for Tauri backend events
   $effect(() => {
-    const unlisten = listen("capture-hotkey", () => {
-      startCapture();
+    const unlistenHotkey = listen("capture-hotkey", () => startCapture());
+    const unlistenTray = listen("tray-capture", () => startCapture());
+    const unlistenConflict = listen<string>("hotkey-conflict", (event) => {
+      toastState.error(
+        `Hotkey unavailable: ${event.payload}. Use the tray menu instead.`
+      );
     });
     return () => {
-      unlisten.then((fn) => fn());
-    };
-  });
-
-  // Listen for tray "New Capture" menu item
-  $effect(() => {
-    const unlisten = listen("tray-capture", () => {
-      startCapture();
-    });
-    return () => {
-      unlisten.then((fn) => fn());
+      unlistenHotkey.then((fn) => fn());
+      unlistenTray.then((fn) => fn());
+      unlistenConflict.then((fn) => fn());
     };
   });
 
@@ -510,13 +515,6 @@
 
 {#if showFirstRun}
   <FirstRun oncomplete={handleFirstRunComplete} />
-{/if}
-
-{#if showOverlay}
-  <RegionOverlay
-    onconfirm={handleRegionConfirm}
-    oncancel={handleOverlayCancel}
-  />
 {/if}
 
 <Toast {toastState} />
