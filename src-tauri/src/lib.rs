@@ -71,6 +71,39 @@ fn check_capture_permission() -> bool {
     capture::check_capture_permission()
 }
 
+#[tauri::command]
+fn scan_integrations() -> Vec<mcp::adapters::AdapterStatus> {
+    let binary = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "codeeye".into());
+    mcp::adapters::scan_all(&binary)
+}
+
+#[tauri::command]
+fn connect_integration(tool_name: String) -> Result<String, String> {
+    let binary = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "codeeye".into());
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    adapter.connect(&binary)?;
+    Ok(format!("{tool_name} connected"))
+}
+
+#[tauri::command]
+fn disconnect_integration(tool_name: String) -> Result<String, String> {
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    adapter.disconnect()?;
+    Ok(format!("{tool_name} disconnected"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -95,6 +128,9 @@ pub fn run() {
             capture_screen,
             capture_region,
             check_capture_permission,
+            scan_integrations,
+            connect_integration,
+            disconnect_integration,
         ])
         .setup(|app| {
             // Tray icon setup
