@@ -1,3 +1,4 @@
+mod compression;
 mod git;
 mod logging;
 mod storage;
