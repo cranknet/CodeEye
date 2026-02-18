@@ -3,6 +3,7 @@ mod cleaner;
 mod compression;
 mod git;
 mod logging;
+pub mod mcp;
 mod storage;
 
 use tauri::{

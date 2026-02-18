@@ -2,5 +2,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    codeeye_lib::run()
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--mcp") {
+        codeeye_lib::mcp::run_server();
+    } else {
+        codeeye_lib::run();
+    }
 }
