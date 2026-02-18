@@ -1,3 +1,5 @@
+mod logging;
+
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
@@ -17,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(logging::build_plugin().build())
         .setup(|app| {
             // Tray icon setup
             let _tray = TrayIconBuilder::new()
