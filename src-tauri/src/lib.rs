@@ -1,3 +1,4 @@
+mod git;
 mod logging;
 mod storage;
 
@@ -5,6 +6,14 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
+
+#[tauri::command]
+fn get_git_context(path: String) -> Result<git::GitContext, String> {
+    let dir = std::path::Path::new(&path);
+    let mut ctx = git::detect_git_context(dir)?;
+    ctx.recent_diff = git::get_recent_diff(dir, 200);
+    Ok(ctx)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(logging::build_plugin().build())
+        .invoke_handler(tauri::generate_handler![get_git_context])
         .setup(|app| {
             // Tray icon setup
             let _tray = TrayIconBuilder::new()
