@@ -8,9 +8,11 @@ mod storage;
 mod uninstall;
 
 use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[tauri::command]
 fn get_git_context(path: String) -> Result<git::GitContext, String> {
@@ -190,9 +192,33 @@ pub fn run() {
             run_uninstall,
         ])
         .setup(|app| {
-            // Tray icon setup
+            // ── Tray menu ───────────────────────────────────────────────
+            let capture_item =
+                MenuItem::with_id(app, "capture", "New Capture  Ctrl+Shift+E", true, None::<&str>)?;
+            let open_item =
+                MenuItem::with_id(app, "open", "Open CodeEye", true, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&capture_item, &open_item, &separator, &quit_item])?;
+
             let _tray = TrayIconBuilder::new()
-                .tooltip("CodeEye")
+                .tooltip("CodeEye — click to capture")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "capture" => {
+                        let _ = app.emit("tray-capture", ());
+                    }
+                    "open" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -208,6 +234,25 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // ── Global shortcut (Ctrl+Shift+E / Cmd+Shift+E) ────────────
+            let modifiers = if cfg!(target_os = "macos") {
+                Modifiers::META | Modifiers::SHIFT
+            } else {
+                Modifiers::CONTROL | Modifiers::SHIFT
+            };
+            let capture_shortcut = Shortcut::new(Some(modifiers), Code::KeyE);
+            match app.global_shortcut().on_shortcut(capture_shortcut, |app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    let _ = app.emit("capture-hotkey", ());
+                }
+            }) {
+                Ok(_) => log::info!("Global shortcut registered: Ctrl+Shift+E"),
+                Err(e) => {
+                    log::warn!("Failed to register global shortcut: {e}");
+                    let _ = app.emit("hotkey-conflict", e.to_string());
+                }
+            }
 
             // Initialize storage
             let base = storage::default_base_path();

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import Canvas from "$lib/components/Canvas.svelte";
   import ExportBar from "$lib/components/ExportBar.svelte";
   import FirstRun from "$lib/components/FirstRun.svelte";
@@ -93,31 +95,26 @@
     })
   );
 
-  /** Start the capture flow: show the region overlay */
-  function startCapture() {
-    showOverlay = true;
-  }
-
-  /** Handle region selection confirmation */
-  async function handleRegionConfirm(region: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }) {
-    showOverlay = false;
+  /**
+   * Capture the full primary monitor.
+   * Hides the window first so the app UI doesn't appear in the screenshot.
+   */
+  async function startCapture() {
+    if (isCapturing) {
+      return;
+    }
     isCapturing = true;
+    const win = getCurrentWindow();
     try {
-      const base64: string = await invoke("capture_region", {
-        monitorId: 0,
-        x: Math.round(region.x),
-        y: Math.round(region.y),
-        width: Math.round(region.width),
-        height: Math.round(region.height),
-      });
-      imageSrc = `data:image/png;base64,${base64}`;
-      annotationState.clear();
+      await win.hide();
+      // Give the OS time to remove the window from the compositor
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      const base64: string = await invoke("capture_screen", { monitorId: 0 });
+      await win.show();
+      await win.setFocus();
+      loadImage(`data:image/png;base64,${base64}`);
     } catch (err) {
+      await win.show();
       console.error("Capture failed:", err);
       toastState.error("Screenshot capture failed");
     } finally {
@@ -129,19 +126,20 @@
     showOverlay = false;
   }
 
-  /** Quick capture: full primary monitor */
-  async function captureFullScreen() {
-    isCapturing = true;
-    try {
-      const base64: string = await invoke("capture_screen", { monitorId: 0 });
-      imageSrc = `data:image/png;base64,${base64}`;
-      annotationState.clear();
-    } catch (err) {
-      console.error("Full screen capture failed:", err);
-      toastState.error("Full screen capture failed");
-    } finally {
-      isCapturing = false;
-    }
+  /** Open an image from the file manager */
+  function openFromFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => loadImage(reader.result as string);
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
   }
 
   /** Restore a session by ID */
@@ -233,7 +231,7 @@
   shortcuts.register({
     key: "n",
     ctrl: true,
-    description: "New capture",
+    description: "Capture screen",
     action: startCapture,
   });
   shortcuts.register({
@@ -277,6 +275,26 @@
     }
     sessionState.loadSessions();
   }
+
+  // Listen for global hotkey events emitted from Rust
+  $effect(() => {
+    const unlisten = listen("capture-hotkey", () => {
+      startCapture();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  });
+
+  // Listen for tray "New Capture" menu item
+  $effect(() => {
+    const unlisten = listen("tray-capture", () => {
+      startCapture();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  });
 
   initApp();
 </script>
@@ -380,16 +398,16 @@
                 style="box-shadow: var(--shadow-sm);"
                 onclick={startCapture}
               >
-                Select Region
+                Capture Screen
               </button>
               <button
                 type="button"
                 class="px-4 py-2 text-sm font-medium bg-[var(--bg-surface)] text-[var(--text-secondary)]
                   border border-[var(--border)] rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
                 style="box-shadow: var(--shadow-sm);"
-                onclick={captureFullScreen}
+                onclick={openFromFile}
               >
-                Full Screen
+                Browse File
               </button>
             </div>
 
