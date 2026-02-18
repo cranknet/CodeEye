@@ -1,0 +1,52 @@
+{
+  "app": {
+    "name": "CodeEye",
+    "tagline": "The fastest way to report UI bugs to AI"
+  },
+  "capture": {
+    "hotkey_prompt": "Press {hotkey} to capture your first screenshot",
+    "region_select": "Drag to select region",
+    "confirm": "Press Enter to confirm, Escape to cancel"
+  },
+  "toolbar": {
+    "select": "Select",
+    "circle": "Circle",
+    "rectangle": "Rectangle",
+    "arrow": "Arrow",
+    "freehand": "Freehand",
+    "text": "Text"
+  },
+  "sidebar": {
+    "page_name": "Page / Component name",
+    "general_notes": "General notes...",
+    "annotations": "Annotations",
+    "no_annotations": "No annotations yet"
+  },
+  "export": {
+    "copy_prompt": "Copy Prompt",
+    "send_to_ai": "Send to AI",
+    "copy_image": "Copy Image",
+    "save_image": "Save Image",
+    "export_json": "Export JSON",
+    "preview": "Preview Prompt"
+  },
+  "severity": {
+    "critical": "Critical",
+    "minor": "Minor",
+    "suggestion": "Suggestion"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "integrations": "Integrations",
+    "quick_labels": "Quick Labels",
+    "danger_zone": "Danger Zone"
+  },
+  "toast": {
+    "saved": "Session saved",
+    "copied": "Copied to clipboard",
+    "export_success": "Exported successfully",
+    "hotkey_conflict": "Hotkey {hotkey} is in use by another app",
+    "capture_permission": "Screen recording permission required"
+  }
+}
