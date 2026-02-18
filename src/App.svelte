@@ -11,6 +11,7 @@
 
   // Placeholder — will be replaced by actual capture in Task 18-20
   let imageSrc: string | null = $state(null);
+  let selectedId: string | null = $state(null);
 </script>
 
 <main class="h-screen w-screen bg-[#0a0a0a] text-[#fafafa] flex flex-col overflow-hidden">
@@ -22,6 +23,6 @@
 
   <!-- Canvas fills remaining space -->
   <div class="flex-1 relative min-h-0">
-    <Canvas {canvasState} {annotationState} {toolState} {imageSrc} />
+    <Canvas {canvasState} {annotationState} {toolState} {imageSrc} bind:selectedId />
   </div>
 </main>

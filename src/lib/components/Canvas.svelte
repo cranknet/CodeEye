@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Point } from '$lib/utils/geometry';
+  import type { Point, Rect } from '$lib/utils/geometry';
+  import { pointInRect } from '$lib/utils/geometry';
   import type { createCanvasStore } from '$lib/state/canvas.svelte';
   import type { createAnnotationStore } from '$lib/state/annotations.svelte';
   import type { Annotation } from '$lib/state/annotations.svelte';
@@ -11,9 +12,18 @@
     annotationState: ReturnType<typeof createAnnotationStore>;
     toolState: ReturnType<typeof createToolStore>;
     imageSrc: string | null;
+    selectedId?: string | null;
+    onselect?: (id: string | null) => void;
   };
 
-  let { canvasState, annotationState, toolState, imageSrc }: Props = $props();
+  let {
+    canvasState,
+    annotationState,
+    toolState,
+    imageSrc,
+    selectedId = $bindable(null),
+    onselect,
+  }: Props = $props();
 
   let canvasEl: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -31,8 +41,16 @@
   let lastPanX = 0;
   let lastPanY = 0;
 
-  // Selection state
-  let selectedId: string | null = $state(null);
+  // Select/move/resize state
+  type DragMode = 'move' | 'resize' | null;
+  let dragMode: DragMode = $state(null);
+  let dragHandleIndex = $state(-1); // which of the 8 handles
+  let dragStartImg: Point | null = $state(null);
+  let dragOrigBounds: Rect | null = $state(null);
+  let dragOrigPoints: Point[] | null = $state(null);
+
+  // Resize handle size in screen pixels (constant regardless of zoom)
+  const HANDLE_SCREEN_SIZE = 8;
 
   // Severity color map
   const SEVERITY_COLORS: Record<string, string> = {
@@ -83,12 +101,73 @@
       // Draw annotations
       drawAnnotations();
 
+      // Draw resize handles for selected
+      if (selectedId) {
+        const sel = annotationState.annotations.find((a) => a.id === selectedId);
+        if (sel) drawResizeHandles(sel);
+      }
+
       // Draw active drawing preview
       drawPreview();
 
       animFrameId = requestAnimationFrame(render);
     }
     render();
+  }
+
+  // ─── Resize Handle Positions ──────────────────────────
+
+  /** Returns 8 handle positions (image coords) for an annotation's bounds:
+   * 0=TL, 1=TC, 2=TR, 3=ML, 4=MR, 5=BL, 6=BC, 7=BR */
+  function getHandlePositions(b: Rect): Point[] {
+    return [
+      { x: b.x, y: b.y },                           // 0: top-left
+      { x: b.x + b.w / 2, y: b.y },                 // 1: top-center
+      { x: b.x + b.w, y: b.y },                     // 2: top-right
+      { x: b.x, y: b.y + b.h / 2 },                 // 3: mid-left
+      { x: b.x + b.w, y: b.y + b.h / 2 },           // 4: mid-right
+      { x: b.x, y: b.y + b.h },                     // 5: bottom-left
+      { x: b.x + b.w / 2, y: b.y + b.h },           // 6: bottom-center
+      { x: b.x + b.w, y: b.y + b.h },               // 7: bottom-right
+    ];
+  }
+
+  /** Cursor style for each resize handle index */
+  const HANDLE_CURSORS = [
+    'nwse-resize', 'ns-resize', 'nesw-resize',
+    'ew-resize', 'ew-resize',
+    'nesw-resize', 'ns-resize', 'nwse-resize',
+  ];
+
+  function drawResizeHandles(ann: Annotation) {
+    const handles = getHandlePositions(ann.bounds);
+    const size = HANDLE_SCREEN_SIZE; // screen pixels
+
+    for (const hp of handles) {
+      const screen = canvasState.imageToScreen(hp.x, hp.y);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(screen.x - size / 2, screen.y - size / 2, size, size);
+      ctx.strokeRect(screen.x - size / 2, screen.y - size / 2, size, size);
+    }
+  }
+
+  /** Hit-test handles. Returns handle index or -1. */
+  function hitTestHandles(screenPos: Point, ann: Annotation): number {
+    const handles = getHandlePositions(ann.bounds);
+    const halfSize = (HANDLE_SCREEN_SIZE + 4) / 2; // extra tolerance
+
+    for (let i = 0; i < handles.length; i++) {
+      const screen = canvasState.imageToScreen(handles[i].x, handles[i].y);
+      if (
+        Math.abs(screenPos.x - screen.x) <= halfSize &&
+        Math.abs(screenPos.y - screen.y) <= halfSize
+      ) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   // ─── Annotation Rendering ──────────────────────────────
@@ -198,14 +277,12 @@
     const bx = ann.bounds.x - badgeSize / 2;
     const by = ann.bounds.y - badgeSize / 2;
 
-    // Badge circle
     ctx.shadowBlur = 0;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(bx + badgeSize / 2, by + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Badge text
     ctx.fillStyle = '#ffffff';
     const fontSize = 11 / canvasState.zoom;
     ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
@@ -288,12 +365,29 @@
     const rect = canvasEl.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
+    const screenPos: Point = { x: screenX, y: screenY };
     const imgPos = canvasState.screenToImage(screenX, screenY);
 
     const tool = toolState.activeTool;
 
     if (tool === 'select') {
-      // Hit-test annotations (reverse order, topmost first)
+      // Priority 1: check resize handles on selected annotation
+      if (selectedId) {
+        const sel = annotationState.annotations.find((a) => a.id === selectedId);
+        if (sel) {
+          const hIdx = hitTestHandles(screenPos, sel);
+          if (hIdx >= 0) {
+            dragMode = 'resize';
+            dragHandleIndex = hIdx;
+            dragStartImg = imgPos;
+            dragOrigBounds = { ...sel.bounds };
+            dragOrigPoints = sel.points ? sel.points.map((p) => ({ ...p })) : null;
+            return;
+          }
+        }
+      }
+
+      // Priority 2: hit-test annotation bodies (reverse order, topmost first)
       let hit: Annotation | null = null;
       for (let i = annotationState.annotations.length - 1; i >= 0; i--) {
         const ann = annotationState.annotations[i];
@@ -302,7 +396,18 @@
           break;
         }
       }
-      selectedId = hit?.id ?? null;
+
+      if (hit) {
+        selectedId = hit.id;
+        onselect?.(hit.id);
+        dragMode = 'move';
+        dragStartImg = imgPos;
+        dragOrigBounds = { ...hit.bounds };
+        dragOrigPoints = hit.points ? hit.points.map((p) => ({ ...p })) : null;
+      } else {
+        selectedId = null;
+        onselect?.(null);
+      }
       return;
     }
 
@@ -324,12 +429,42 @@
       return;
     }
 
+    // Move or resize selected annotation
+    if (dragMode && selectedId && dragStartImg && dragOrigBounds) {
+      const rect = canvasEl.getBoundingClientRect();
+      const imgPos = canvasState.screenToImage(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      );
+      const dx = imgPos.x - dragStartImg.x;
+      const dy = imgPos.y - dragStartImg.y;
+
+      if (dragMode === 'move') {
+        const newBounds: Rect = {
+          x: dragOrigBounds.x + dx,
+          y: dragOrigBounds.y + dy,
+          w: dragOrigBounds.w,
+          h: dragOrigBounds.h,
+        };
+        const changes: Partial<Annotation> = { bounds: newBounds };
+        if (dragOrigPoints) {
+          changes.points = dragOrigPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+        }
+        annotationState.update(selectedId, changes);
+      } else if (dragMode === 'resize') {
+        const newBounds = computeResize(dragOrigBounds, dragHandleIndex, dx, dy, e.shiftKey);
+        annotationState.update(selectedId, { bounds: newBounds });
+      }
+      return;
+    }
+
     if (!isDrawing || !drawStart) return;
 
     const rect = canvasEl.getBoundingClientRect();
-    const screenX = e.clientX - rect.left;
-    const screenY = e.clientY - rect.top;
-    const imgPos = canvasState.screenToImage(screenX, screenY);
+    const imgPos = canvasState.screenToImage(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
 
     drawEnd = imgPos;
 
@@ -338,9 +473,18 @@
     }
   }
 
-  function handleMouseUp(e: MouseEvent) {
+  function handleMouseUp(_e: MouseEvent) {
     if (isPanning) {
       isPanning = false;
+      return;
+    }
+
+    if (dragMode) {
+      dragMode = null;
+      dragHandleIndex = -1;
+      dragStartImg = null;
+      dragOrigBounds = null;
+      dragOrigPoints = null;
       return;
     }
 
@@ -357,7 +501,6 @@
       const w = Math.abs(drawEnd.x - drawStart.x);
       const h = Math.abs(drawEnd.y - drawStart.y);
 
-      // Ignore tiny accidental draws
       if (w > 3 && h > 3) {
         annotationState.add({
           type: tool,
@@ -368,16 +511,13 @@
         });
       }
     } else if (tool === 'arrow') {
-      const dx = drawEnd.x - drawStart.x;
-      const dy = drawEnd.y - drawStart.y;
-      if (Math.hypot(dx, dy) > 5) {
+      const dist = Math.hypot(drawEnd.x - drawStart.x, drawEnd.y - drawStart.y);
+      if (dist > 5) {
         const x = Math.min(drawStart.x, drawEnd.x);
         const y = Math.min(drawStart.y, drawEnd.y);
-        const w = Math.abs(dx);
-        const h = Math.abs(dy);
         annotationState.add({
           type: 'arrow',
-          bounds: { x, y, w, h },
+          bounds: { x, y, w: Math.abs(drawEnd.x - drawStart.x), h: Math.abs(drawEnd.y - drawStart.y) },
           points: [{ ...drawStart }, { ...drawEnd }],
           label: toolState.activeQuickLabel ?? '',
           severity: toolState.activeSeverity,
@@ -391,12 +531,7 @@
       const minY = Math.min(...ys);
       annotationState.add({
         type: 'freehand',
-        bounds: {
-          x: minX,
-          y: minY,
-          w: Math.max(...xs) - minX,
-          h: Math.max(...ys) - minY,
-        },
+        bounds: { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY },
         points: [...freehandPoints],
         label: toolState.activeQuickLabel ?? '',
         severity: toolState.activeSeverity,
@@ -412,19 +547,52 @@
       });
     }
 
-    // Reset drawing state
     isDrawing = false;
     drawStart = null;
     drawEnd = null;
     freehandPoints = [];
   }
 
+  // ─── Resize Computation ──────────────────────────────
+
+  /** Compute new bounds after dragging a resize handle.
+   * Handle indices: 0=TL, 1=TC, 2=TR, 3=ML, 4=MR, 5=BL, 6=BC, 7=BR */
+  function computeResize(orig: Rect, handle: number, dx: number, dy: number, lockAspect: boolean): Rect {
+    let { x, y, w, h } = orig;
+
+    // Which edges move
+    const movesLeft = handle === 0 || handle === 3 || handle === 5;
+    const movesRight = handle === 2 || handle === 4 || handle === 7;
+    const movesTop = handle === 0 || handle === 1 || handle === 2;
+    const movesBottom = handle === 5 || handle === 6 || handle === 7;
+
+    if (movesLeft) { x += dx; w -= dx; }
+    if (movesRight) { w += dx; }
+    if (movesTop) { y += dy; h -= dy; }
+    if (movesBottom) { h += dy; }
+
+    // Enforce minimum size
+    if (w < 5) { w = 5; }
+    if (h < 5) { h = 5; }
+
+    // Aspect ratio lock with shift
+    if (lockAspect && orig.w > 0 && orig.h > 0) {
+      const ratio = orig.w / orig.h;
+      if (movesRight || movesLeft) {
+        h = w / ratio;
+      } else {
+        w = h * ratio;
+      }
+    }
+
+    return { x, y, w, h };
+  }
+
   // ─── Hit Testing ──────────────────────────────────
 
   function hitTestAnnotation(p: Point, ann: Annotation): boolean {
     const { x, y, w, h } = ann.bounds;
-    // Simple bounding box check for all types
-    return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h;
+    return pointInRect(p, { x, y, w, h });
   }
 
   // ─── Keyboard Shortcuts ──────────────────────────────
@@ -445,10 +613,21 @@
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
       annotationState.remove(selectedId);
       selectedId = null;
+      onselect?.(null);
       return;
     }
 
-    // Tool shortcuts
+    // Reset view
+    if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+      e.preventDefault();
+      canvasState.resetView();
+      return;
+    }
+
+    // Tool shortcuts (only when not in an input)
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
     const toolMap: Record<string, typeof toolState.activeTool> = {
       v: 'select',
       s: 'rectangle',
@@ -463,8 +642,10 @@
     }
   }
 
-  // Derive cursor from active tool
+  // Derive cursor from context
   let cursor = $derived.by(() => {
+    if (dragMode === 'move') return 'move';
+    if (dragMode === 'resize') return HANDLE_CURSORS[dragHandleIndex] ?? 'nwse-resize';
     switch (toolState.activeTool) {
       case 'select':
         return 'default';
