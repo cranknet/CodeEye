@@ -1,3 +1,4 @@
+mod capture;
 mod cleaner;
 mod compression;
 mod git;
@@ -35,6 +36,40 @@ fn delete_session_by_id(session_id: String) -> Result<(), String> {
     storage::delete_session(&base, &session_id)
 }
 
+#[tauri::command]
+fn list_monitors() -> Result<Vec<capture::MonitorInfo>, String> {
+    capture::list_monitors()
+}
+
+#[tauri::command]
+fn capture_screen(monitor_id: u32) -> Result<String, String> {
+    let png_bytes = capture::capture_monitor(monitor_id)?;
+    Ok(base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        &png_bytes,
+    ))
+}
+
+#[tauri::command]
+fn capture_region(
+    monitor_id: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    let png_bytes = capture::capture_region(monitor_id, x, y, width, height)?;
+    Ok(base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        &png_bytes,
+    ))
+}
+
+#[tauri::command]
+fn check_capture_permission() -> bool {
+    capture::check_capture_permission()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -55,6 +90,10 @@ pub fn run() {
             create_new_session,
             list_all_sessions,
             delete_session_by_id,
+            list_monitors,
+            capture_screen,
+            capture_region,
+            check_capture_permission,
         ])
         .setup(|app| {
             // Tray icon setup
