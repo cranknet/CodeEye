@@ -1,3 +1,4 @@
+mod cleaner;
 mod compression;
 mod git;
 mod logging;
@@ -16,6 +17,24 @@ fn get_git_context(path: String) -> Result<git::GitContext, String> {
     Ok(ctx)
 }
 
+#[tauri::command]
+fn create_new_session(page_name: String, project: String) -> Result<String, String> {
+    let base = storage::default_base_path();
+    storage::create_session(&base, &page_name, &project)
+}
+
+#[tauri::command]
+fn list_all_sessions() -> Result<Vec<storage::SessionSummary>, String> {
+    let base = storage::default_base_path();
+    storage::list_sessions(&base)
+}
+
+#[tauri::command]
+fn delete_session_by_id(session_id: String) -> Result<(), String> {
+    let base = storage::default_base_path();
+    storage::delete_session(&base, &session_id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -31,7 +50,12 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(logging::build_plugin().build())
-        .invoke_handler(tauri::generate_handler![get_git_context])
+        .invoke_handler(tauri::generate_handler![
+            get_git_context,
+            create_new_session,
+            list_all_sessions,
+            delete_session_by_id,
+        ])
         .setup(|app| {
             // Tray icon setup
             let _tray = TrayIconBuilder::new()
@@ -59,6 +83,18 @@ pub fn run() {
                 e
             })?;
             log::info!("Storage initialized at {:?}", base);
+
+            // Run auto-cleaner
+            let config = storage::load_config(&base).unwrap_or_default();
+            match cleaner::run_cleanup(
+                &base,
+                config.session_limit as usize,
+                config.session_retention_days,
+            ) {
+                Ok(n) if n > 0 => log::info!("Auto-cleaner removed {} sessions", n),
+                Ok(_) => {}
+                Err(e) => log::warn!("Auto-cleaner failed: {}", e),
+            }
 
             log::info!("CodeEye starting up");
             Ok(())
