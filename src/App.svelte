@@ -2,12 +2,17 @@
   import { invoke } from "@tauri-apps/api/core";
   import Canvas from "$lib/components/Canvas.svelte";
   import ExportBar from "$lib/components/ExportBar.svelte";
+  import FirstRun from "$lib/components/FirstRun.svelte";
+  import IntegrationHub from "$lib/components/IntegrationHub.svelte";
   import PromptPreview from "$lib/components/PromptPreview.svelte";
   import RegionOverlay from "$lib/components/RegionOverlay.svelte";
+  import SessionList from "$lib/components/SessionList.svelte";
+  import Settings from "$lib/components/Settings.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { createAnnotationStore } from "$lib/state/annotations.svelte";
   import { createCanvasStore } from "$lib/state/canvas.svelte";
+  import { createSessionStore } from "$lib/state/sessions.svelte";
   import { createToolStore } from "$lib/state/tools.svelte";
   import { generatePrompt } from "$lib/utils/export";
 
@@ -15,6 +20,7 @@
   const canvasState = createCanvasStore();
   const annotationState = createAnnotationStore();
   const toolState = createToolStore();
+  const sessionState = createSessionStore();
 
   // Session metadata
   let pageName = $state("");
@@ -28,8 +34,12 @@
   let showOverlay = $state(false);
   let isCapturing = $state(false);
 
-  // Prompt preview
+  // Modal states
   let showPromptPreview = $state(false);
+  let showSessionList = $state(false);
+  let showSettings = $state(false);
+  let showIntegrations = $state(false);
+  let showFirstRun = $state(false);
 
   // Derived prompt markdown
   let promptMarkdown = $derived(
@@ -60,7 +70,6 @@
     isCapturing = true;
 
     try {
-      // Capture region from primary monitor (monitor 0)
       const base64: string = await invoke("capture_region", {
         monitorId: 0,
         x: Math.round(region.x),
@@ -70,8 +79,6 @@
       });
 
       imageSrc = `data:image/png;base64,${base64}`;
-
-      // Clear previous annotations for new capture
       annotationState.clear();
     } catch (err) {
       console.error("Capture failed:", err);
@@ -97,6 +104,21 @@
       isCapturing = false;
     }
   }
+
+  /** Restore a session by ID */
+  function handleSessionRestore(sessionId: string) {
+    showSessionList = false;
+    sessionState.setCurrentSession(sessionId);
+    // TODO: Load session data (annotations, image, metadata) from Rust backend
+  }
+
+  /** Handle first-run completion */
+  function handleFirstRunComplete() {
+    showFirstRun = false;
+  }
+
+  // Load sessions on mount
+  sessionState.loadSessions();
 </script>
 
 <main
@@ -117,7 +139,7 @@
         bind:selectedId
       />
 
-      <!-- Zoom indicator + capture button -->
+      <!-- Zoom indicator -->
       <div
         class="absolute bottom-3 left-3 flex items-center gap-2 text-[10px] font-mono text-white/20 pointer-events-none"
       >
@@ -189,7 +211,9 @@
   {#if imageSrc}
     <ExportBar
       {promptMarkdown}
-      onshowpreview={() => { showPromptPreview = true; }}
+      onshowpreview={() => {
+        showPromptPreview = true;
+      }}
     />
   {/if}
 </main>
@@ -198,8 +222,48 @@
 {#if showPromptPreview}
   <PromptPreview
     {promptMarkdown}
-    onclose={() => { showPromptPreview = false; }}
+    onclose={() => {
+      showPromptPreview = false;
+    }}
   />
+{/if}
+
+<!-- Session list modal -->
+{#if showSessionList}
+  <SessionList
+    {sessionState}
+    onrestore={handleSessionRestore}
+    onclose={() => {
+      showSessionList = false;
+    }}
+  />
+{/if}
+
+<!-- Settings modal -->
+{#if showSettings}
+  <Settings
+    onclose={() => {
+      showSettings = false;
+    }}
+    onshowintegrations={() => {
+      showSettings = false;
+      showIntegrations = true;
+    }}
+  />
+{/if}
+
+<!-- Integration hub modal -->
+{#if showIntegrations}
+  <IntegrationHub
+    onclose={() => {
+      showIntegrations = false;
+    }}
+  />
+{/if}
+
+<!-- First-run experience -->
+{#if showFirstRun}
+  <FirstRun oncomplete={handleFirstRunComplete} />
 {/if}
 
 <!-- Region overlay (fullscreen, above everything) -->
