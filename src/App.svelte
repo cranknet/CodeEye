@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import Canvas from "$lib/components/Canvas.svelte";
+  import RegionOverlay from "$lib/components/RegionOverlay.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { createAnnotationStore } from "$lib/state/annotations.svelte";
@@ -18,8 +20,64 @@
   // Shared selection state (canvas ↔ sidebar)
   let selectedId: string | null = $state(null);
 
-  // Placeholder — will be replaced by actual capture in Task 18-20
+  // Capture state
   let imageSrc: string | null = $state(null);
+  let showOverlay = $state(false);
+  let isCapturing = $state(false);
+
+  /** Start the capture flow: show the region overlay */
+  function startCapture() {
+    showOverlay = true;
+  }
+
+  /** Handle region selection confirmation */
+  async function handleRegionConfirm(region: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) {
+    showOverlay = false;
+    isCapturing = true;
+
+    try {
+      // Capture region from primary monitor (monitor 0)
+      const base64: string = await invoke("capture_region", {
+        monitorId: 0,
+        x: Math.round(region.x),
+        y: Math.round(region.y),
+        width: Math.round(region.width),
+        height: Math.round(region.height),
+      });
+
+      imageSrc = `data:image/png;base64,${base64}`;
+
+      // Clear previous annotations for new capture
+      annotationState.clear();
+    } catch (err) {
+      console.error("Capture failed:", err);
+    } finally {
+      isCapturing = false;
+    }
+  }
+
+  function handleOverlayCancel() {
+    showOverlay = false;
+  }
+
+  /** Quick capture: full primary monitor */
+  async function captureFullScreen() {
+    isCapturing = true;
+    try {
+      const base64: string = await invoke("capture_screen", { monitorId: 0 });
+      imageSrc = `data:image/png;base64,${base64}`;
+      annotationState.clear();
+    } catch (err) {
+      console.error("Full screen capture failed:", err);
+    } finally {
+      isCapturing = false;
+    }
+  }
 </script>
 
 <main
@@ -40,23 +98,79 @@
         bind:selectedId
       />
 
-      <!-- Zoom indicator -->
+      <!-- Zoom indicator + capture button -->
       <div
-        class="absolute bottom-3 left-3 text-[10px] font-mono text-white/20 pointer-events-none"
+        class="absolute bottom-3 left-3 flex items-center gap-2 text-[10px] font-mono text-white/20 pointer-events-none"
       >
         {Math.round(canvasState.zoom * 100)}%
       </div>
+
+      <!-- Capture button (when no image loaded) -->
+      {#if !imageSrc && !isCapturing}
+        <div
+          class="absolute inset-0 flex items-center justify-center pointer-events-none"
+        >
+          <div class="flex flex-col items-center gap-3 pointer-events-auto">
+            <p class="text-sm text-white/30 font-mono">No screenshot loaded</p>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="px-4 py-2 text-xs font-medium bg-[#f97316] text-[#0a0a0a] rounded-md
+                  hover:bg-[#f97316]/90 transition-colors"
+                onclick={startCapture}
+              >
+                Select Region
+              </button>
+              <button
+                type="button"
+                class="px-4 py-2 text-xs font-medium bg-white/[0.06] text-white/60 rounded-md
+                  hover:bg-white/[0.1] transition-colors"
+                onclick={captureFullScreen}
+              >
+                Full Screen
+              </button>
+            </div>
+            <p class="text-[10px] text-white/15 font-mono">
+              Or drag & drop an image · Ctrl+V to paste
+            </p>
+          </div>
+        </div>
+      {/if}
+
+      {#if isCapturing}
+        <div
+          class="absolute inset-0 flex items-center justify-center bg-black/30"
+        >
+          <p class="text-sm text-white/50 font-mono animate-pulse">
+            Capturing...
+          </p>
+        </div>
+      {/if}
     </div>
 
     <!-- Sidebar -->
     <Sidebar
       {annotationState}
       {selectedId}
-      onselect={(id) => { selectedId = id; }}
+      onselect={(id) => {
+        selectedId = id;
+      }}
       {pageName}
       {generalNotes}
-      onpagechange={(v) => { pageName = v; }}
-      onnoteschange={(v) => { generalNotes = v; }}
+      onpagechange={(v) => {
+        pageName = v;
+      }}
+      onnoteschange={(v) => {
+        generalNotes = v;
+      }}
     />
   </div>
 </main>
+
+<!-- Region overlay (fullscreen, above everything) -->
+{#if showOverlay}
+  <RegionOverlay
+    onconfirm={handleRegionConfirm}
+    oncancel={handleOverlayCancel}
+  />
+{/if}
