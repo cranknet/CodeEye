@@ -5,6 +5,7 @@ mod git;
 mod logging;
 pub mod mcp;
 mod storage;
+mod uninstall;
 
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -104,6 +105,11 @@ fn disconnect_integration(tool_name: String) -> Result<String, String> {
     Ok(format!("{tool_name} disconnected"))
 }
 
+#[tauri::command]
+fn run_uninstall(backup: bool) -> Result<String, String> {
+    uninstall::run_uninstall(backup)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -131,6 +137,7 @@ pub fn run() {
             scan_integrations,
             connect_integration,
             disconnect_integration,
+            run_uninstall,
         ])
         .setup(|app| {
             // Tray icon setup
