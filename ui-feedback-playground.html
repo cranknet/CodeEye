@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Feedback Playground</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    >
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        padding: 0;
+        margin: 0;
+      }
+
+      :root {
+        --bg-deep: #08080a;
+        --bg-surface: #131316;
+        --bg-elevated: #1c1c21;
+        --bg-hover: #26262d;
+        --border: #2e2e38;
+        --border-subtle: #222230;
+        --text: #f0f0f4;
+        --text-secondary: #9898a6;
+        --text-muted: #5e5e6e;
+        --accent: #f97316;
+        --accent-hover: #fb923c;
+        --accent-glow: rgba(249, 115, 22, 0.28);
+        --accent-subtle: rgba(249, 115, 22, 0.08);
+        --danger: #ef4444;
+        --danger-hover: #f87171;
+        --success: #22c55e;
+        --radius-sm: 6px;
+        --radius-md: 10px;
+        --radius-lg: 16px;
+        --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-mono: "DM Mono", "Menlo", monospace;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        font-family: var(--font-body);
+        -webkit-font-smoothing: antialiased;
+        color: var(--text);
+        background: var(--bg-deep);
+      }
+
+      /* ── Noise overlay ── */
+      body::after {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        pointer-events: none;
+        content: "";
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-repeat: repeat;
+        background-size: 256px 256px;
+        opacity: 0.025;
+      }
+
+      /* ── Toolbar ── */
+      .toolbar {
+        z-index: 10;
+        display: flex;
+        flex-shrink: 0;
+        gap: 12px;
+        align-items: center;
+        height: 54px;
+        padding: 0 16px;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .toolbar-logo {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding-right: 16px;
+        font-family: var(--font-display);
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: -0.02em;
+        user-select: none;
+        border-right: 1px solid var(--border);
+      }
+
+      .toolbar-logo svg {
+        flex-shrink: 0;
+        color: var(--accent);
+      }
+      .toolbar-spacer {
+        flex: 1;
+      }
+
+      .toolbar-group {
+        display: flex;
+        gap: 2px;
+        align-items: center;
+        padding: 3px;
+        background: var(--bg-elevated);
+        border-radius: var(--radius-md);
+      }
+
+      .tool-btn {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 34px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        background: transparent;
+        border: none;
+        border-radius: var(--radius-sm);
+        transition: all 0.15s ease;
+      }
+
+      .tool-btn:hover {
+        color: var(--text);
+        background: var(--bg-hover);
+      }
+      .tool-btn.active {
+        color: var(--accent);
+        background: var(--accent-subtle);
+      }
+      .tool-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.3;
+      }
+
+      .tool-btn svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .tool-btn[data-tooltip]::after {
+        position: absolute;
+        bottom: -32px;
+        left: 50%;
+        padding: 4px 8px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        pointer-events: none;
+        content: attr(data-tooltip);
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        opacity: 0;
+        transform: translateX(-50%);
+        transition: opacity 0.15s;
+      }
+      .tool-btn[data-tooltip]:hover::after {
+        opacity: 1;
+      }
+
+      .action-btn {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        height: 34px;
+        padding: 0 14px;
+        font-family: var(--font-body);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        border-radius: var(--radius-sm);
+        transition: all 0.15s ease;
+      }
+
+      .action-btn svg {
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+      }
+      .action-btn-secondary {
+        color: var(--text-secondary);
+        background: var(--bg-elevated);
+      }
+      .action-btn-secondary:hover {
+        color: var(--text);
+        background: var(--bg-hover);
+      }
+      .action-btn-primary {
+        color: #fff;
+        background: var(--accent);
+      }
+      .action-btn-primary:hover {
+        background: var(--accent-hover);
+      }
+      .action-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.35;
+      }
+
+      /* ── Workspace ── */
+      .workspace {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .canvas-area {
+        position: relative;
+        flex: 1;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            circle at 50% 50%,
+            rgba(249, 115, 22, 0.02) 0%,
+            transparent 70%
+          ),
+          linear-gradient(var(--bg-deep), var(--bg-deep));
+      }
+
+      .canvas-area.drawing {
+        cursor: crosshair;
+      }
+      .canvas-area canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ── Sidebar ── */
+      .sidebar {
+        display: flex;
+        flex-shrink: 0;
+        flex-direction: column;
+        width: 340px;
+        background: var(--bg-surface);
+        border-left: 1px solid var(--border);
+        transition:
+          width 0.25s ease,
+          opacity 0.2s ease;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        overflow: hidden;
+        opacity: 0;
+      }
+
+      .sidebar-header {
+        padding: 16px 18px 12px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .sidebar-header h2 {
+        margin-bottom: 12px;
+        font-family: var(--font-display);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        letter-spacing: -0.01em;
+      }
+
+      .page-name-input {
+        width: 100%;
+        height: 36px;
+        padding: 0 12px;
+        font-family: var(--font-body);
+        font-size: 13px;
+        color: var(--text);
+        outline: none;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        transition: border-color 0.15s ease;
+      }
+
+      .page-name-input::placeholder {
+        color: var(--text-muted);
+      }
+      .page-name-input:focus {
+        border-color: var(--accent);
+      }
+
+      .general-notes-input {
+        width: 100%;
+        min-height: 36px;
+        max-height: 120px;
+        padding: 8px 12px;
+        margin-top: 8px;
+        font-family: var(--font-body);
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text);
+        resize: vertical;
+        outline: none;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        transition: border-color 0.15s ease;
+      }
+      .general-notes-input::placeholder {
+        color: var(--text-muted);
+      }
+      .general-notes-input:focus {
+        border-color: var(--accent);
+      }
+
+      .sidebar-body {
+        flex: 1;
+        padding: 8px 0;
+        overflow-y: auto;
+      }
+
+      .sidebar-body::-webkit-scrollbar {
+        width: 5px;
+      }
+      .sidebar-body::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .sidebar-body::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+      }
+
+      .sidebar-empty {
+        padding: 40px 18px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      .sidebar-empty svg {
+        display: block;
+        margin: 0 auto 12px;
+        color: var(--border);
+      }
+
+      .annotation-item {
+        position: relative;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 10px 18px;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+        transition: background 0.12s ease;
+      }
+
+      .annotation-item:hover {
+        background: var(--bg-elevated);
+      }
+      .annotation-item.selected {
+        background: var(--accent-subtle);
+        border-left-color: var(--accent);
+      }
+
+      .annotation-badge {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        margin-top: 1px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #fff;
+        background: var(--accent);
+        border-radius: 50%;
+      }
+
+      .annotation-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .annotation-text {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text);
+        word-wrap: break-word;
+      }
+
+      .annotation-text.empty {
+        font-style: italic;
+        color: var(--text-muted);
+      }
+
+      .annotation-meta {
+        margin-top: 3px;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .annotation-delete {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        margin-top: 1px;
+        color: var(--text-muted);
+        cursor: pointer;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        opacity: 0;
+        transition: all 0.12s ease;
+      }
+
+      .annotation-item:hover .annotation-delete {
+        opacity: 1;
+      }
+      .annotation-delete:hover {
+        color: var(--danger);
+        background: rgba(239, 68, 68, 0.15);
+      }
+      .annotation-delete svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .sidebar-footer {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 14px 18px;
+        border-top: 1px solid var(--border-subtle);
+      }
+
+      .sidebar-footer .action-btn {
+        justify-content: center;
+        width: 100%;
+        height: 38px;
+      }
+
+      .annotation-count {
+        padding-bottom: 4px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      /* ── Connection Status ── */
+      .connection-status {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        transition: color 0.2s ease;
+      }
+
+      .status-dot {
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        background: var(--danger);
+        border-radius: 50%;
+        transition: background 0.2s ease;
+      }
+
+      .connection-status.connected {
+        color: var(--success);
+      }
+      .connection-status.connected .status-dot {
+        background: var(--success);
+      }
+
+      .action-btn-claude {
+        font-weight: 600;
+        color: #fff;
+        letter-spacing: -0.01em;
+        background: linear-gradient(135deg, #d97706, #f97316);
+      }
+      .action-btn-claude:hover {
+        background: linear-gradient(135deg, #f59e0b, #fb923c);
+      }
+      .action-btn-claude:disabled {
+        color: var(--text-muted);
+        background: var(--bg-elevated);
+        opacity: 0.5;
+      }
+
+      /* ── Comment Popup ── */
+      .comment-popup {
+        position: absolute;
+        z-index: 20;
+        width: 280px;
+        padding: 10px;
+        pointer-events: none;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        box-shadow:
+          0 8px 32px rgba(0, 0, 0, 0.5),
+          0 0 0 1px rgba(249, 115, 22, 0.1);
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px);
+        transition:
+          opacity 0.15s ease,
+          transform 0.15s ease;
+      }
+
+      .comment-popup.visible {
+        pointer-events: auto;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .comment-input {
+        width: 100%;
+        height: 60px;
+        padding: 8px 10px;
+        font-family: var(--font-body);
+        font-size: 13px;
+        color: var(--text);
+        resize: none;
+        outline: none;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        transition: border-color 0.15s ease;
+      }
+
+      .comment-input::placeholder {
+        color: var(--text-muted);
+      }
+      .comment-input:focus {
+        border-color: var(--accent);
+      }
+
+      .comment-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 8px;
+      }
+
+      .comment-hint {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .comment-hint kbd {
+        padding: 1px 5px;
+        background: var(--bg-hover);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+      }
+
+      .comment-save-btn {
+        height: 28px;
+        padding: 0 12px;
+        font-family: var(--font-body);
+        font-size: 12px;
+        font-weight: 500;
+        color: #fff;
+        cursor: pointer;
+        background: var(--accent);
+        border: none;
+        border-radius: var(--radius-sm);
+        transition: background 0.15s ease;
+      }
+      .comment-save-btn:hover {
+        background: var(--accent-hover);
+      }
+
+      /* ── Dropzone ── */
+      .dropzone {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 8, 10, 0.92);
+        backdrop-filter: blur(8px);
+        transition: opacity 0.25s ease;
+      }
+
+      .dropzone.hidden {
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      .dropzone-content {
+        padding: 80px 100px;
+        text-align: center;
+        cursor: pointer;
+        border: 2px dashed var(--border);
+        border-radius: 24px;
+        transition: all 0.25s ease;
+      }
+
+      .dropzone.drag-over .dropzone-content {
+        background: var(--accent-subtle);
+        border-color: var(--accent);
+        transform: scale(1.02);
+      }
+
+      .dropzone-content svg {
+        display: block;
+        margin: 0 auto 20px;
+        color: var(--text-muted);
+        transition: color 0.25s ease;
+      }
+
+      .dropzone.drag-over .dropzone-content svg {
+        color: var(--accent);
+      }
+
+      .dropzone-content h2 {
+        margin-bottom: 8px;
+        font-family: var(--font-display);
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--text);
+        letter-spacing: -0.02em;
+      }
+
+      .dropzone-content p {
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+
+      .dropzone-content p span {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      /* ── Toast ── */
+      .toast-container {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        z-index: 200;
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 8px;
+        pointer-events: none;
+        transform: translateX(-50%);
+      }
+
+      .toast {
+        padding: 10px 20px;
+        font-size: 13px;
+        color: var(--text);
+        white-space: nowrap;
+        pointer-events: auto;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        transform: translateY(10px);
+        transition: all 0.25s ease;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .toast-success {
+        border-left: 3px solid var(--success);
+      }
+      .toast-error {
+        border-left: 3px solid var(--danger);
+      }
+
+      /* ── Edit-in-place ── */
+      .inline-edit-input {
+        width: 100%;
+        padding: 4px 6px;
+        font-family: var(--font-body);
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text);
+        resize: none;
+        outline: none;
+        background: var(--bg-surface);
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+      }
+
+      /* ── Utility ── */
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes popIn {
+        from {
+          transform: scale(0.9);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ────── Toolbar ────── -->
+    <header class="toolbar">
+      <div class="toolbar-logo">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <circle cx="12" cy="12" r="3" />
+          <line x1="12" y1="2" x2="12" y2="5" />
+          <line x1="12" y1="19" x2="12" y2="22" />
+          <line x1="2" y1="12" x2="5" y2="12" />
+          <line x1="19" y1="12" x2="22" y2="12" />
+        </svg>
+        UI Feedback
+      </div>
+
+      <div class="toolbar-group">
+        <button
+          type="button"
+          class="tool-btn active"
+          id="btnCircle"
+          data-tooltip="Circle (C)"
+          aria-label="Draw circle"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
+          id="btnSquare"
+          data-tooltip="Square (S)"
+          aria-label="Draw square"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
+          id="btnUndo"
+          data-tooltip="Undo (Ctrl+Z)"
+          aria-label="Undo last annotation"
+          disabled
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
+          id="btnClear"
+          data-tooltip="Clear all"
+          aria-label="Clear all annotations"
+          disabled
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path
+              d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-spacer"></div>
+
+      <button
+        type="button"
+        class="action-btn action-btn-secondary"
+        id="btnUpload"
+        aria-label="Upload new screenshot"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        Upload
+      </button>
+
+      <button
+        type="button"
+        class="tool-btn"
+        id="btnToggleSidebar"
+        data-tooltip="Toggle panel"
+        aria-label="Toggle sidebar"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="15" y1="3" x2="15" y2="21" />
+        </svg>
+      </button>
+    </header>
+
+    <!-- ────── Workspace ────── -->
+    <main class="workspace">
+      <div class="canvas-area drawing" id="canvasArea">
+        <canvas id="canvas"></canvas>
+
+        <div class="comment-popup" id="commentPopup">
+          <textarea
+            class="comment-input"
+            id="commentInput"
+            placeholder="What's the issue here?"
+            rows="2"
+          ></textarea>
+          <div class="comment-actions">
+            <span class="comment-hint"
+              ><kbd>Enter</kbd>
+              save &middot; <kbd>Esc</kbd> cancel</span
+            >
+            <button type="button" class="comment-save-btn" id="btnSaveComment">
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div
+            style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"
+          >
+            <h2 style="margin-bottom:0;">Annotations</h2>
+            <span class="connection-status" id="connectionStatus">
+              <span class="status-dot"></span>
+              <span id="statusText">MCP Offline</span>
+            </span>
+          </div>
+          <input
+            type="text"
+            class="page-name-input"
+            id="pageName"
+            placeholder="Page or component name (optional)"
+          >
+          <textarea
+            class="general-notes-input"
+            id="generalNotes"
+            placeholder="General feedback about this page... (e.g. layout feels cluttered, page not designed yet)"
+            rows="3"
+          ></textarea>
+        </div>
+        <div class="sidebar-body" id="sidebarBody">
+          <div class="sidebar-empty" id="sidebarEmpty">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <line x1="9" y1="15" x2="15" y2="15" />
+              <circle cx="9" cy="9.5" r="0.5" fill="currentColor" />
+              <circle cx="15" cy="9.5" r="0.5" fill="currentColor" />
+            </svg>
+            Draw shapes on the screenshot<br>to annotate UI issues.
+          </div>
+        </div>
+        <div class="sidebar-footer" id="sidebarFooter">
+          <div class="annotation-count" id="annotationCount"></div>
+          <button
+            type="button"
+            class="action-btn action-btn-claude"
+            id="btnSendToClaude"
+            disabled
+            aria-label="Send feedback directly to Claude Code"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M22 2L11 13" />
+              <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+            </svg>
+            Send to Claude
+          </button>
+          <button
+            type="button"
+            class="action-btn action-btn-primary"
+            id="btnExport"
+            disabled
+            aria-label="Copy feedback prompt to clipboard"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path
+                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+              />
+            </svg>
+            Copy Prompt
+          </button>
+          <button
+            type="button"
+            class="action-btn action-btn-secondary"
+            id="btnCopyImage"
+            disabled
+            aria-label="Copy annotated image to clipboard"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            Copy Image
+          </button>
+          <button
+            type="button"
+            class="action-btn action-btn-secondary"
+            id="btnSaveImage"
+            disabled
+            aria-label="Download annotated screenshot"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Save Image
+          </button>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ────── Drop Zone Overlay ────── -->
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-content" id="dropzoneContent">
+        <svg
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <h2>Drop a screenshot</h2>
+        <p>or <span>click to browse</span> &middot; Ctrl+V to paste</p>
+      </div>
+    </div>
+
+    <!-- ────── Toast Container ────── -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ────── Hidden File Input ────── -->
+    <input type="file" id="fileInput" accept="image/*" class="visually-hidden">
+
+    <script>
+      "use strict";
+      /* ============================================================
+   State
+   ============================================================ */
+      const state = {
+        image: null,
+        fileName: "",
+        annotations: [],
+        selectedId: null,
+        hoveredId: null,
+        isDrawing: false,
+        drawStart: null,
+        drawCurrent: null,
+        scale: 1,
+        offset: { x: 0, y: 0 },
+        commentingId: null,
+        nextId: 1,
+        drawMode: true,
+        drawShape: "circle", // 'circle' or 'square'
+      };
+
+      /* ============================================================
+   DOM References
+   ============================================================ */
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const canvasArea = document.getElementById("canvasArea");
+      const commentPopup = document.getElementById("commentPopup");
+      const commentInput = document.getElementById("commentInput");
+      const sidebarBody = document.getElementById("sidebarBody");
+      const sidebarEmpty = document.getElementById("sidebarEmpty");
+      const sidebarFooter = document.getElementById("sidebarFooter");
+      const sidebar = document.getElementById("sidebar");
+      const dropzone = document.getElementById("dropzone");
+      const dropzoneContent = document.getElementById("dropzoneContent");
+      const fileInput = document.getElementById("fileInput");
+      const pageName = document.getElementById("pageName");
+      const annotationCount = document.getElementById("annotationCount");
+      const toastContainer = document.getElementById("toastContainer");
+
+      const btnCircle = document.getElementById("btnCircle");
+      const btnSquare = document.getElementById("btnSquare");
+      const generalNotes = document.getElementById("generalNotes");
+      const btnUndo = document.getElementById("btnUndo");
+      const btnClear = document.getElementById("btnClear");
+      const btnUpload = document.getElementById("btnUpload");
+      const btnExport = document.getElementById("btnExport");
+      const btnCopyImage = document.getElementById("btnCopyImage");
+      const btnSaveImage = document.getElementById("btnSaveImage");
+      const btnSaveComment = document.getElementById("btnSaveComment");
+      const btnToggleSidebar = document.getElementById("btnToggleSidebar");
+      const btnSendToClaude = document.getElementById("btnSendToClaude");
+      const connectionStatus = document.getElementById("connectionStatus");
+      const statusText = document.getElementById("statusText");
+
+      /* ============================================================
+   Coordinate Transforms
+   ============================================================ */
+      function canvasToImage(cx, cy) {
+        return {
+          x: (cx - state.offset.x) / state.scale,
+          y: (cy - state.offset.y) / state.scale,
+        };
+      }
+
+      function imageToCanvas(ix, iy) {
+        return {
+          x: ix * state.scale + state.offset.x,
+          y: iy * state.scale + state.offset.y,
+        };
+      }
+
+      function isInsideImage(cx, cy) {
+        if (!state.image) {
+          return false;
+        }
+        const imgW = state.image.naturalWidth * state.scale;
+        const imgH = state.image.naturalHeight * state.scale;
+        return (
+          cx >= state.offset.x &&
+          cx <= state.offset.x + imgW &&
+          cy >= state.offset.y &&
+          cy <= state.offset.y + imgH
+        );
+      }
+
+      function getCanvasCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+
+      /* ============================================================
+   Image Loading
+   ============================================================ */
+      function loadImage(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            state.image = img;
+            state.fileName = file.name;
+            state.annotations = [];
+            state.selectedId = null;
+            state.nextId = 1;
+            dropzone.classList.add("hidden");
+            fitImage();
+            render();
+            updateUI();
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function fitImage() {
+        const rect = canvasArea.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        if (!state.image) {
+          return;
+        }
+
+        const imgW = state.image.naturalWidth;
+        const imgH = state.image.naturalHeight;
+        const padding = 32;
+        const availW = rect.width - padding * 2;
+        const availH = rect.height - padding * 2;
+
+        state.scale = Math.min(availW / imgW, availH / imgH, 1);
+
+        const drawW = imgW * state.scale;
+        const drawH = imgH * state.scale;
+        state.offset.x = (rect.width - drawW) / 2;
+        state.offset.y = (rect.height - drawH) / 2;
+      }
+
+      /* ============================================================
+   Canvas Rendering
+   ============================================================ */
+      function render() {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        if (!state.image) {
+          return;
+        }
+
+        // Draw the screenshot
+        const dw = state.image.naturalWidth * state.scale;
+        const dh = state.image.naturalHeight * state.scale;
+        ctx.drawImage(state.image, state.offset.x, state.offset.y, dw, dh);
+
+        // Subtle border around image
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(state.offset.x, state.offset.y, dw, dh);
+
+        // Draw finalized annotations
+        for (let i = 0; i < state.annotations.length; i++) {
+          const ann = state.annotations[i];
+          const isSelected = ann.id === state.selectedId;
+          const isHovered = ann.id === state.hoveredId;
+          drawAnnotation(ann, i + 1, isSelected || isHovered);
+        }
+
+        // Draw preview while drawing
+        if (state.isDrawing && state.drawStart && state.drawCurrent) {
+          drawPreview(state.drawStart, state.drawCurrent);
+        }
+      }
+
+      function drawAnnotation(ann, index, highlight) {
+        const { x: cx, y: cy } = imageToCanvas(ann.cx, ann.cy);
+        const rx = ann.rx * state.scale;
+        const ry = ann.ry * state.scale;
+
+        ctx.save();
+
+        // Glow for highlighted
+        if (highlight) {
+          ctx.shadowColor = "rgba(249, 115, 22, 0.45)";
+          ctx.shadowBlur = 18;
+        }
+
+        // Shape stroke
+        ctx.beginPath();
+        if (ann.shape === "square") {
+          const r = 4; // corner radius
+          const x = cx - rx,
+            y = cy - ry,
+            w = rx * 2,
+            h = ry * 2;
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + w - r, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+          ctx.lineTo(x + w, y + h - r);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+          ctx.lineTo(x + r, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.closePath();
+        } else {
+          ctx.ellipse(
+            cx,
+            cy,
+            Math.max(rx, 1),
+            Math.max(ry, 1),
+            0,
+            0,
+            Math.PI * 2
+          );
+        }
+        ctx.strokeStyle = highlight ? "#fb923c" : "#f97316";
+        ctx.lineWidth = highlight ? 3 : 2.5;
+        ctx.stroke();
+
+        // Subtle fill
+        ctx.fillStyle = highlight
+          ? "rgba(249,115,22,0.12)"
+          : "rgba(249,115,22,0.05)";
+        ctx.fill();
+
+        ctx.restore();
+
+        // Number badge at the top
+        const badgeY = cy - ry - 16;
+        const badgeR = 12;
+
+        ctx.beginPath();
+        ctx.arc(cx, badgeY, badgeR, 0, Math.PI * 2);
+        ctx.fillStyle = "#f97316";
+        ctx.fill();
+
+        // Badge border
+        ctx.strokeStyle = "rgba(0,0,0,0.3)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "600 11px 'DM Sans', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(index.toString(), cx, badgeY);
+      }
+
+      function drawPreview(start, current) {
+        const cx = (start.x + current.x) / 2;
+        const cy = (start.y + current.y) / 2;
+        const rx = Math.abs(current.x - start.x) / 2;
+        const ry = Math.abs(current.y - start.y) / 2;
+
+        if (rx < 3 && ry < 3) {
+          return;
+        }
+
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        if (state.drawShape === "square") {
+          const r = 4;
+          const x = cx - rx,
+            y = cy - ry,
+            w = rx * 2,
+            h = ry * 2;
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + w - r, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+          ctx.lineTo(x + w, y + h - r);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+          ctx.lineTo(x + r, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.closePath();
+        } else {
+          ctx.ellipse(
+            cx,
+            cy,
+            Math.max(rx, 1),
+            Math.max(ry, 1),
+            0,
+            0,
+            Math.PI * 2
+          );
+        }
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.7)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "rgba(249,115,22,0.06)";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      /* ============================================================
+   Drawing Interaction
+   ============================================================ */
+      let mouseDownPos = null;
+
+      canvas.addEventListener("mousedown", (e) => {
+        if (e.button !== 0 || !state.image) {
+          return;
+        }
+        if (state.commentingId) {
+          return; // Already commenting
+        }
+
+        const pos = getCanvasCoords(e);
+        mouseDownPos = pos;
+
+        if (state.drawMode && isInsideImage(pos.x, pos.y)) {
+          state.isDrawing = true;
+          state.drawStart = pos;
+          state.drawCurrent = pos;
+        }
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (!state.image) {
+          return;
+        }
+
+        if (state.isDrawing) {
+          state.drawCurrent = getCanvasCoords(e);
+          render();
+          return;
+        }
+
+        // Hover detection for cursor feedback
+        const pos = getCanvasCoords(e);
+        const hit = hitTestAnnotation(pos.x, pos.y);
+        canvas.style.cursor = state.drawMode
+          ? isInsideImage(pos.x, pos.y)
+            ? "crosshair"
+            : "default"
+          : hit
+            ? "pointer"
+            : "default";
+      });
+
+      canvas.addEventListener("mouseup", (e) => {
+        if (e.button !== 0 || !state.image) {
+          return;
+        }
+
+        const pos = getCanvasCoords(e);
+
+        if (state.isDrawing) {
+          state.isDrawing = false;
+
+          const dx = pos.x - state.drawStart.x;
+          const dy = pos.y - state.drawStart.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 8) {
+            // Too small — treat as click
+            handleCanvasClick(pos);
+          } else {
+            // Create annotation
+            const cx = (state.drawStart.x + pos.x) / 2;
+            const cy = (state.drawStart.y + pos.y) / 2;
+            const rx = Math.abs(pos.x - state.drawStart.x) / 2;
+            const ry = Math.abs(pos.y - state.drawStart.y) / 2;
+
+            if (rx < 8 && ry < 8) {
+              render();
+              return;
+            }
+
+            const imgCoords = canvasToImage(cx, cy);
+            const ann = {
+              id: state.nextId++,
+              cx: imgCoords.x,
+              cy: imgCoords.y,
+              rx: rx / state.scale,
+              ry: ry / state.scale,
+              shape: state.drawShape,
+              comment: "",
+            };
+
+            state.annotations.push(ann);
+            state.selectedId = ann.id;
+            render();
+            updateUI();
+            showCommentPopup(ann);
+          }
+
+          state.drawStart = null;
+          state.drawCurrent = null;
+          return;
+        }
+
+        // Click without draw mode
+        if (mouseDownPos) {
+          const dx = pos.x - mouseDownPos.x;
+          const dy = pos.y - mouseDownPos.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 5) {
+            handleCanvasClick(pos);
+          }
+        }
+        mouseDownPos = null;
+      });
+
+      function handleCanvasClick(pos) {
+        const hit = hitTestAnnotation(pos.x, pos.y);
+        state.selectedId = hit ? hit.id : null;
+        render();
+        updateUI();
+      }
+
+      function hitTestAnnotation(cx, cy) {
+        for (let i = state.annotations.length - 1; i >= 0; i--) {
+          const ann = state.annotations[i];
+          const { x: acx, y: acy } = imageToCanvas(ann.cx, ann.cy);
+          const arx = ann.rx * state.scale;
+          const ary = ann.ry * state.scale;
+
+          if (ann.shape === "square") {
+            // Rectangle hit test with padding
+            const pad = 6;
+            if (
+              Math.abs(cx - acx) <= arx + pad &&
+              Math.abs(cy - acy) <= ary + pad
+            ) {
+              return ann;
+            }
+          } else {
+            const dx = cx - acx;
+            const dy = cy - acy;
+            if ((dx * dx) / (arx * arx) + (dy * dy) / (ary * ary) <= 1.3) {
+              return ann;
+            }
+          }
+        }
+        return null;
+      }
+
+      /* ============================================================
+   Comment Popup
+   ============================================================ */
+      function showCommentPopup(annotation) {
+        state.commentingId = annotation.id;
+
+        const { x: cx, y: cy } = imageToCanvas(annotation.cx, annotation.cy);
+        const ry = annotation.ry * state.scale;
+        const rect = canvasArea.getBoundingClientRect();
+
+        let popupY = cy + ry + 20;
+        if (popupY + 110 > rect.height) {
+          popupY = cy - ry - 120;
+        }
+        popupY = Math.max(8, Math.min(rect.height - 120, popupY));
+
+        const popupX = Math.max(148, Math.min(rect.width - 148, cx));
+
+        commentPopup.style.left = popupX + "px";
+        commentPopup.style.top = popupY + "px";
+        commentPopup.classList.add("visible");
+        commentInput.value = annotation.comment || "";
+
+        requestAnimationFrame(() => commentInput.focus());
+      }
+
+      function hideCommentPopup() {
+        commentPopup.classList.remove("visible");
+        state.commentingId = null;
+      }
+
+      function saveComment() {
+        const ann = state.annotations.find((a) => a.id === state.commentingId);
+        if (ann) {
+          ann.comment = commentInput.value.trim();
+        }
+        hideCommentPopup();
+        render();
+        updateUI();
+      }
+
+      function cancelComment() {
+        const ann = state.annotations.find((a) => a.id === state.commentingId);
+        if (ann && !ann.comment) {
+          // Remove annotation if it has no comment yet
+          state.annotations = state.annotations.filter((a) => a.id !== ann.id);
+          state.selectedId = null;
+        }
+        hideCommentPopup();
+        render();
+        updateUI();
+      }
+
+      commentInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          saveComment();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancelComment();
+        }
+      });
+
+      btnSaveComment.addEventListener("click", saveComment);
+
+      /* ============================================================
+   Sidebar
+   ============================================================ */
+      function updateUI() {
+        // Toolbar buttons
+        const hasAnnotations = state.annotations.length > 0;
+        const hasGeneralNotes = generalNotes.value.trim().length > 0;
+        const hasFeedback = hasAnnotations || hasGeneralNotes;
+        btnUndo.disabled = !hasAnnotations;
+        btnClear.disabled = !hasAnnotations;
+        btnExport.disabled = !hasFeedback;
+        btnSendToClaude.disabled = !(hasFeedback && mcpConnected);
+        btnCopyImage.disabled = !state.image;
+        btnSaveImage.disabled = !state.image;
+
+        // Shape tool buttons
+        btnCircle.classList.toggle(
+          "active",
+          state.drawMode && state.drawShape === "circle"
+        );
+        btnSquare.classList.toggle(
+          "active",
+          state.drawMode && state.drawShape === "square"
+        );
+        canvasArea.classList.toggle("drawing", state.drawMode);
+
+        // Annotation count
+        annotationCount.textContent = hasAnnotations
+          ? `${state.annotations.length} annotation${state.annotations.length > 1 ? "s" : ""}`
+          : "";
+
+        // Empty state
+        sidebarEmpty.style.display = hasAnnotations ? "none" : "block";
+
+        // Rebuild annotation list
+        const existingItems = sidebarBody.querySelectorAll(".annotation-item");
+        for (const item of existingItems) {
+          item.remove();
+        }
+
+        for (let i = 0; i < state.annotations.length; i++) {
+          const ann = state.annotations[i];
+          const item = document.createElement("div");
+          item.className =
+            "annotation-item" +
+            (ann.id === state.selectedId ? " selected" : "");
+
+          const badge = document.createElement("div");
+          badge.className = "annotation-badge";
+          badge.textContent = (i + 1).toString();
+
+          const content = document.createElement("div");
+          content.className = "annotation-content";
+
+          const text = document.createElement("div");
+          text.className = "annotation-text" + (ann.comment ? "" : " empty");
+          text.textContent = ann.comment || "No comment — click to edit";
+
+          const meta = document.createElement("div");
+          meta.className = "annotation-meta";
+          const loc = getLocationDescription(ann.cx, ann.cy);
+          meta.textContent = loc;
+
+          content.appendChild(text);
+          content.appendChild(meta);
+
+          const del = document.createElement("button");
+          del.type = "button";
+          del.className = "annotation-delete";
+          del.setAttribute("aria-label", "Delete annotation");
+          del.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+          item.appendChild(badge);
+          item.appendChild(content);
+          item.appendChild(del);
+          sidebarBody.appendChild(item);
+
+          // Click to select
+          item.addEventListener("click", (e) => {
+            if (e.target.closest(".annotation-delete")) {
+              return;
+            }
+            state.selectedId = ann.id;
+            render();
+            updateUI();
+          });
+
+          // Double-click to edit comment inline
+          text.addEventListener("dblclick", (e) => {
+            e.stopPropagation();
+            startInlineEdit(ann, text);
+          });
+
+          // Hover to highlight on canvas
+          item.addEventListener("mouseenter", () => {
+            state.hoveredId = ann.id;
+            render();
+          });
+          item.addEventListener("mouseleave", () => {
+            state.hoveredId = null;
+            render();
+          });
+
+          // Delete
+          del.addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteAnnotation(ann.id);
+          });
+        }
+      }
+
+      function startInlineEdit(ann, textEl) {
+        const input = document.createElement("textarea");
+        input.className = "inline-edit-input";
+        input.value = ann.comment;
+        input.rows = 2;
+        textEl.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const finish = () => {
+          ann.comment = input.value.trim();
+          render();
+          updateUI();
+        };
+
+        input.addEventListener("blur", finish);
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            input.blur();
+          }
+          if (e.key === "Escape") {
+            input.value = ann.comment;
+            input.blur();
+          }
+        });
+      }
+
+      function deleteAnnotation(id) {
+        state.annotations = state.annotations.filter((a) => a.id !== id);
+        if (state.selectedId === id) {
+          state.selectedId = null;
+        }
+        render();
+        updateUI();
+      }
+
+      /* ============================================================
+   Location Description
+   ============================================================ */
+      function getLocationDescription(ix, iy) {
+        if (!state.image) {
+          return "";
+        }
+        const imgW = state.image.naturalWidth;
+        const imgH = state.image.naturalHeight;
+
+        const xPct = Math.round((ix / imgW) * 100);
+        const yPct = Math.round((iy / imgH) * 100);
+
+        const vertical = yPct < 33 ? "top" : yPct < 67 ? "middle" : "bottom";
+        const horizontal = xPct < 33 ? "left" : xPct < 67 ? "center" : "right";
+
+        let area;
+        if (vertical === "middle" && horizontal === "center") {
+          area = "center";
+        } else if (vertical === "middle") {
+          area = horizontal + " side";
+        } else if (horizontal === "center") {
+          area = vertical;
+        } else {
+          area = vertical + "-" + horizontal;
+        }
+
+        return `${area} \u00B7 ${xPct}%, ${yPct}%`;
+      }
+
+      /* ============================================================
+   Export
+   ============================================================ */
+      function generatePrompt() {
+        const page = pageName.value.trim() || "Untitled Page";
+        const imgW = state.image.naturalWidth;
+        const imgH = state.image.naturalHeight;
+
+        const notes = generalNotes.value.trim();
+
+        let prompt = "# UI Feedback Report\n\n";
+        prompt += `**Page/Component:** ${page}\n`;
+        prompt += `**Screenshot:** ${state.fileName} (${imgW} \u00D7 ${imgH}px)\n`;
+        prompt += `**Issues Found:** ${state.annotations.length}\n\n`;
+
+        if (notes) {
+          prompt += `## General Feedback\n\n${notes}\n\n`;
+        }
+
+        prompt += "---\n";
+
+        for (let i = 0; i < state.annotations.length; i++) {
+          const ann = state.annotations[i];
+          const xPct = Math.round((ann.cx / imgW) * 100);
+          const yPct = Math.round((ann.cy / imgH) * 100);
+          const areaW = Math.round(ann.rx * 2);
+          const areaH = Math.round(ann.ry * 2);
+
+          const loc = getLocationDescription(ann.cx, ann.cy).split(
+            " \u00B7 "
+          )[0];
+          const comment = ann.comment || "(No description provided)";
+
+          prompt += `\n### Issue ${i + 1}: ${comment}\n`;
+          prompt += `- **Where:** ${loc} area \u2014 approximately ${xPct}% from left, ${yPct}% from top\n`;
+          prompt += `- **Region size:** ~${areaW} \u00D7 ${areaH}px\n`;
+        }
+
+        prompt += "\n---\n\n";
+        prompt +=
+          "*Please review and fix each issue above. The numbered annotations on the annotated screenshot (shared separately) correspond to these issues. Prioritize in the order listed.*";
+
+        return prompt;
+      }
+
+      async function exportPrompt() {
+        const prompt = generatePrompt();
+        try {
+          await navigator.clipboard.writeText(prompt);
+          showToast("Prompt copied to clipboard", "success");
+        } catch {
+          // Fallback
+          const textarea = document.createElement("textarea");
+          textarea.value = prompt;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+          showToast("Prompt copied to clipboard", "success");
+        }
+      }
+
+      async function copyImageToClipboard() {
+        try {
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png")
+          );
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob }),
+          ]);
+          showToast("Annotated image copied to clipboard", "success");
+        } catch {
+          showToast(
+            "Could not copy image \u2014 try Save Image instead",
+            "error"
+          );
+        }
+      }
+
+      function saveImage() {
+        const link = document.createElement("a");
+        const name = state.fileName.replace(/\.[^.]+$/, "");
+        link.download = `${name}-annotated.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        showToast("Image downloaded", "success");
+      }
+
+      /* ============================================================
+   MCP Connection & Send to Claude
+   ============================================================ */
+      const MCP_URL = "http://127.0.0.1:3847";
+      let mcpConnected = false;
+
+      async function checkConnection() {
+        try {
+          const res = await fetch(`${MCP_URL}/health`, {
+            signal: AbortSignal.timeout(2000),
+          });
+          const data = await res.json();
+          if (data.status === "ok") {
+            mcpConnected = true;
+            connectionStatus.className = "connection-status connected";
+            statusText.textContent = "MCP Ready";
+            updateUI();
+            return true;
+          }
+        } catch {}
+        mcpConnected = false;
+        connectionStatus.className = "connection-status";
+        statusText.textContent = "MCP Offline";
+        updateUI();
+        return false;
+      }
+
+      async function sendToClaude() {
+        if (!state.image || state.annotations.length === 0) {
+          return;
+        }
+
+        btnSendToClaude.disabled = true;
+        btnSendToClaude.textContent = "Sending...";
+
+        const prompt = generatePrompt();
+        const imageBase64 = canvas.toDataURL("image/png");
+
+        const payload = {
+          pageName: pageName.value.trim() || "Untitled",
+          fileName: state.fileName,
+          imageWidth: state.image.naturalWidth,
+          imageHeight: state.image.naturalHeight,
+          annotations: state.annotations,
+          prompt,
+          annotatedImage: imageBase64,
+        };
+
+        try {
+          const res = await fetch(`${MCP_URL}/feedback`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+          if (data.success) {
+            showToast('Sent! Tell Claude: "check UI feedback"', "success");
+          } else {
+            showToast("Failed: " + (data.error || "Unknown error"), "error");
+          }
+        } catch {
+          showToast(
+            "MCP server not running — start with: node tools/ui-feedback-mcp/server.js",
+            "error"
+          );
+        }
+
+        btnSendToClaude.disabled = false;
+        btnSendToClaude.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg> Send to Claude';
+        updateUI();
+      }
+
+      // Check connection on load, then every 10s
+      checkConnection();
+      setInterval(checkConnection, 10_000);
+
+      /* ============================================================
+   Toast
+   ============================================================ */
+      function showToast(message, type = "success") {
+        const toast = document.createElement("div");
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+        requestAnimationFrame(() => toast.classList.add("show"));
+        setTimeout(() => {
+          toast.classList.remove("show");
+          setTimeout(() => toast.remove(), 300);
+        }, 2500);
+      }
+
+      /* ============================================================
+   File Handling & Drag-Drop
+   ============================================================ */
+      let dragCounter = 0;
+
+      window.addEventListener("dragenter", (e) => {
+        e.preventDefault();
+        dragCounter++;
+        if (state.image) {
+          dropzone.classList.remove("hidden");
+        }
+        dropzone.classList.add("drag-over");
+      });
+
+      window.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter === 0) {
+          dropzone.classList.remove("drag-over");
+          if (state.image) {
+            dropzone.classList.add("hidden");
+          }
+        }
+      });
+
+      window.addEventListener("dragover", (e) => e.preventDefault());
+
+      window.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropzone.classList.remove("drag-over");
+
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith("image/")) {
+          loadImage(file);
+        }
+      });
+
+      dropzoneContent.addEventListener("click", () => fileInput.click());
+      btnUpload.addEventListener("click", () => fileInput.click());
+
+      // Clipboard paste support
+      window.addEventListener("paste", (e) => {
+        // Don't intercept paste in text inputs
+        if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
+          return;
+        }
+
+        const items = e.clipboardData?.items;
+        if (!items) {
+          return;
+        }
+
+        for (const item of items) {
+          if (item.type.startsWith("image/")) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (file) {
+              // Give it a meaningful name since clipboard images are unnamed
+              const named = new File([file], `pasted-${Date.now()}.png`, {
+                type: file.type,
+              });
+              loadImage(named);
+              showToast("Image pasted from clipboard", "success");
+            }
+            return;
+          }
+        }
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          loadImage(file);
+        }
+        fileInput.value = "";
+      });
+
+      /* ============================================================
+   Toolbar Actions
+   ============================================================ */
+      btnCircle.addEventListener("click", () => {
+        if (state.drawMode && state.drawShape === "circle") {
+          state.drawMode = false;
+        } else {
+          state.drawMode = true;
+          state.drawShape = "circle";
+        }
+        updateUI();
+      });
+
+      btnSquare.addEventListener("click", () => {
+        if (state.drawMode && state.drawShape === "square") {
+          state.drawMode = false;
+        } else {
+          state.drawMode = true;
+          state.drawShape = "square";
+        }
+        updateUI();
+      });
+
+      // Re-enable export when general notes change
+      generalNotes.addEventListener("input", () => updateUI());
+
+      btnUndo.addEventListener("click", () => {
+        if (state.annotations.length > 0) {
+          const removed = state.annotations.pop();
+          if (state.selectedId === removed.id) {
+            state.selectedId = null;
+          }
+          render();
+          updateUI();
+        }
+      });
+
+      btnClear.addEventListener("click", () => {
+        if (state.annotations.length === 0) {
+          return;
+        }
+        state.annotations = [];
+        state.selectedId = null;
+        render();
+        updateUI();
+        showToast("All annotations cleared", "success");
+      });
+
+      btnExport.addEventListener("click", exportPrompt);
+      btnSendToClaude.addEventListener("click", sendToClaude);
+      btnCopyImage.addEventListener("click", copyImageToClipboard);
+      btnSaveImage.addEventListener("click", saveImage);
+
+      btnToggleSidebar.addEventListener("click", () => {
+        sidebar.classList.toggle("collapsed");
+        // Refit after transition
+        setTimeout(() => {
+          fitImage();
+          render();
+        }, 260);
+      });
+
+      /* ============================================================
+   Keyboard Shortcuts
+   ============================================================ */
+      window.addEventListener("keydown", (e) => {
+        // Ignore if typing in input
+        if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
+          return;
+        }
+
+        if (e.key === "z" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          btnUndo.click();
+        } else if (e.key === "c" || e.key === "C") {
+          e.preventDefault();
+          btnCircle.click();
+        } else if (e.key === "s" || e.key === "S") {
+          e.preventDefault();
+          btnSquare.click();
+        } else if (e.key === "Delete" || e.key === "Backspace") {
+          if (state.selectedId) {
+            deleteAnnotation(state.selectedId);
+          }
+        } else if (e.key === "Escape") {
+          if (state.commentingId) {
+            cancelComment();
+          } else {
+            state.selectedId = null;
+            render();
+            updateUI();
+          }
+        }
+      });
+
+      /* ============================================================
+   Resize
+   ============================================================ */
+      window.addEventListener("resize", () => {
+        if (state.image) {
+          fitImage();
+          render();
+        }
+      });
+
+      /* ============================================================
+   Init
+   ============================================================ */
+      updateUI();
+    </script>
+  </body>
+</html>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
   interface Props {
@@ -14,7 +13,7 @@
   async function copyPrompt() {
     try {
       await writeText(promptMarkdown);
-      showFeedback("Prompt copied");
+      showFeedback("Copied!");
     } catch (err) {
       console.error("Copy failed:", err);
       showFeedback("Copy failed");
@@ -39,13 +38,16 @@
 </script>
 
 <div
-  class="flex items-center gap-1.5 px-3 py-1.5 bg-[#111111] border-t border-white/[0.06] select-none"
+  class="flex items-center gap-1.5 px-3 py-2 bg-[var(--bg-surface)] border-t border-[var(--border)]
+    select-none shrink-0"
+  style="box-shadow: var(--shadow-xs);"
 >
-  <!-- Preview/Edit -->
+  <!-- Preview button -->
   <button
     type="button"
-    class="px-3 py-1 text-[11px] font-mono text-white/50 hover:text-white/80
-      bg-white/[0.04] hover:bg-white/[0.08] rounded transition-colors"
+    class="px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)]
+      bg-[var(--bg-sunken)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border)]
+      rounded-md transition-colors"
     onclick={onshowpreview}
   >
     Preview
@@ -53,43 +55,48 @@
 
   <div class="flex-1"></div>
 
-  <!-- Feedback -->
+  <!-- Copy feedback -->
   {#if copyFeedback}
-    <span class="text-[10px] font-mono text-[#f97316] animate-pulse">
+    <span
+      class="text-xs font-medium text-[var(--accent)] animate-pulse select-none"
+    >
       {copyFeedback}
     </span>
   {/if}
 
-  <!-- Copy Prompt -->
+  <!-- JSON export -->
   <button
     type="button"
-    class="px-3 py-1 text-[11px] font-mono text-white/50 hover:text-white/80
-      bg-white/[0.04] hover:bg-white/[0.08] rounded transition-colors"
-    onclick={copyPrompt}
-    title="Copy prompt to clipboard"
-  >
-    Copy Prompt
-  </button>
-
-  <!-- Export JSON -->
-  <button
-    type="button"
-    class="px-3 py-1 text-[11px] font-mono text-white/50 hover:text-white/80
-      bg-white/[0.04] hover:bg-white/[0.08] rounded transition-colors"
+    class="px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)]
+      bg-[var(--bg-sunken)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border)]
+      rounded-md transition-colors"
     onclick={exportJson}
     title="Copy session as JSON"
   >
     JSON
   </button>
 
-  <!-- Send -->
+  <!-- Copy Prompt -->
   <button
     type="button"
-    class="px-3 py-1 text-[11px] font-medium text-[#0a0a0a] bg-[#f97316]
-      hover:bg-[#f97316]/90 rounded transition-colors"
+    class="px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)]
+      bg-[var(--bg-sunken)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border)]
+      rounded-md transition-colors"
+    onclick={copyPrompt}
+    title="Copy prompt to clipboard"
+  >
+    Copy Prompt
+  </button>
+
+  <!-- Send to AI (primary CTA) -->
+  <button
+    type="button"
+    class="px-4 py-1.5 text-xs font-semibold text-[var(--text-on-accent)] bg-[var(--accent)]
+      hover:bg-[var(--accent-hover)] rounded-md transition-colors"
+    style="box-shadow: var(--shadow-sm);"
     onclick={copyPrompt}
     title="Copy and send to AI"
   >
-    Send
+    Send to AI
   </button>
 </div>

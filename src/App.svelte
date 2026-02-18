@@ -34,10 +34,44 @@
   // Shared selection state (canvas ↔ sidebar)
   let selectedId: string | null = $state(null);
 
+  // Theme — light by default, loaded from config on init
+  let theme = $state("light");
+
+  // Track OS dark mode preference so "system" theme updates live
+  let osDark = $state(
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  );
+
+  $effect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      osDark = e.matches;
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  });
+
+  // Resolved theme: "system" maps to actual "dark"/"light" based on OS preference
+  let resolvedTheme = $derived.by(() => {
+    if (theme === "system") {
+      return osDark ? "dark" : "light";
+    }
+    return theme;
+  });
+
+  // Apply theme attribute to <html> so all CSS variables update globally
+  $effect(() => {
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+  });
+
+  // Canvas background derived from resolved theme
+  let canvasBg = $derived(resolvedTheme === "dark" ? "#1a1a1a" : "#e8e8e8");
+
   // Capture state
   let imageSrc: string | null = $state(null);
   let showOverlay = $state(false);
   let isCapturing = $state(false);
+  let isDragOver = $state(false);
 
   // Modal states
   let showPromptPreview = $state(false);
@@ -73,7 +107,6 @@
   }) {
     showOverlay = false;
     isCapturing = true;
-
     try {
       const base64: string = await invoke("capture_region", {
         monitorId: 0,
@@ -82,11 +115,11 @@
         width: Math.round(region.width),
         height: Math.round(region.height),
       });
-
       imageSrc = `data:image/png;base64,${base64}`;
       annotationState.clear();
     } catch (err) {
       console.error("Capture failed:", err);
+      toastState.error("Screenshot capture failed");
     } finally {
       isCapturing = false;
     }
@@ -105,6 +138,7 @@
       annotationState.clear();
     } catch (err) {
       console.error("Full screen capture failed:", err);
+      toastState.error("Full screen capture failed");
     } finally {
       isCapturing = false;
     }
@@ -114,7 +148,6 @@
   async function handleSessionRestore(sessionId: string) {
     showSessionList = false;
     sessionState.setCurrentSession(sessionId);
-
     const session = await sessionState.loadSession(sessionId);
     if (session) {
       pageName = session.pageName;
@@ -129,7 +162,7 @@
     }
   }
 
-  /** Handle first-run completion — persist to config */
+  /** Handle first-run completion */
   async function handleFirstRunComplete() {
     showFirstRun = false;
     try {
@@ -141,7 +174,7 @@
     }
   }
 
-  /** Load an image from a data URL or blob URL */
+  /** Load an image from a data URL */
   function loadImage(src: string) {
     imageSrc = src;
     annotationState.clear();
@@ -191,7 +224,10 @@
     }
   }
 
-  let isDragOver = $state(false);
+  /** Handle theme change from Settings */
+  function handleThemeChange(newTheme: string) {
+    theme = newTheme;
+  }
 
   // Register keyboard shortcuts
   shortcuts.register({
@@ -222,14 +258,18 @@
     },
   });
 
-  // Check first-run config and load sessions on mount
+  // Check first-run state + load sessions on mount
   async function initApp() {
     try {
-      const config = await invoke<{ first_run_complete: boolean }>(
-        "load_app_config"
-      );
+      const config = await invoke<{
+        first_run_complete: boolean;
+        theme: string;
+      }>("load_app_config");
       if (!config.first_run_complete) {
         showFirstRun = true;
+      }
+      if (config.theme) {
+        theme = config.theme;
       }
     } catch {
       // Config not found or unreadable — show first run
@@ -245,14 +285,47 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <main
-  class="h-screen w-screen bg-[#0a0a0a] text-[#fafafa] flex flex-col overflow-hidden
-    {isDragOver ? 'ring-2 ring-inset ring-[#f97316]/40' : ''}"
+  class="h-screen w-screen flex flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]
+    {isDragOver ? 'ring-2 ring-inset ring-[var(--accent)]/50' : ''}"
   ondrop={handleDrop}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
 >
-  <!-- Toolbar -->
-  <Toolbar {toolState} {annotationState} />
+  <!-- Header row: Toolbar + nav actions -->
+  <div
+    class="flex items-stretch border-b border-[var(--border)] bg-[var(--bg-surface)] shrink-0"
+    style="box-shadow: var(--shadow-xs);"
+  >
+    <Toolbar {toolState} {annotationState} />
+
+    <!-- Right-side nav actions -->
+    <div
+      class="flex items-center gap-0.5 px-2 border-l border-[var(--border)] shrink-0"
+    >
+      <button
+        type="button"
+        class="px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]
+          hover:bg-[var(--bg-surface-hover)] rounded-md transition-colors"
+        onclick={() => {
+          showSessionList = true;
+        }}
+        title="Session history"
+      >
+        History
+      </button>
+      <button
+        type="button"
+        class="w-8 h-8 flex items-center justify-center text-sm text-[var(--text-muted)]
+          hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] rounded-md transition-colors"
+        onclick={() => {
+          showSettings = true;
+        }}
+        title="Settings (Ctrl+,)"
+      >
+        ⚙
+      </button>
+    </div>
+  </div>
 
   <!-- Editor area: Canvas + Sidebar -->
   <div class="flex flex-1 min-h-0">
@@ -263,55 +336,85 @@
         {annotationState}
         {toolState}
         {imageSrc}
+        {canvasBg}
         bind:selectedId
       />
 
       <!-- Zoom indicator -->
       <div
-        class="absolute bottom-3 left-3 flex items-center gap-2 text-[10px] font-mono text-white/20 pointer-events-none"
+        class="absolute bottom-3 left-3 text-[11px] font-mono text-[var(--text-faint)] pointer-events-none select-none
+          bg-[var(--bg-surface)]/80 px-1.5 py-0.5 rounded backdrop-blur-sm"
       >
         {Math.round(canvasState.zoom * 100)}%
       </div>
 
-      <!-- Capture button (when no image loaded) -->
+      <!-- Empty state — no screenshot loaded -->
       {#if !imageSrc && !isCapturing}
         <div
           class="absolute inset-0 flex items-center justify-center pointer-events-none"
         >
-          <div class="flex flex-col items-center gap-3 pointer-events-auto">
-            <p class="text-sm text-white/30 font-mono">No screenshot loaded</p>
+          <div class="flex flex-col items-center gap-5 pointer-events-auto">
+            <!-- Placeholder icon -->
+            <div
+              class="w-14 h-14 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)]
+                flex items-center justify-center text-3xl select-none"
+              style="box-shadow: var(--shadow-md);"
+            >
+              📸
+            </div>
+
+            <div class="text-center space-y-1">
+              <p class="text-sm font-medium text-[var(--text-secondary)]">
+                No screenshot loaded
+              </p>
+              <p class="text-xs text-[var(--text-muted)]">
+                Capture your screen or drop an image here
+              </p>
+            </div>
+
             <div class="flex gap-2">
               <button
                 type="button"
-                class="px-4 py-2 text-xs font-medium bg-[#f97316] text-[#0a0a0a] rounded-md
-                  hover:bg-[#f97316]/90 transition-colors"
+                class="px-4 py-2 text-sm font-medium bg-[var(--accent)] text-[var(--text-on-accent)]
+                  rounded-lg hover:bg-[var(--accent-hover)] transition-colors"
+                style="box-shadow: var(--shadow-sm);"
                 onclick={startCapture}
               >
                 Select Region
               </button>
               <button
                 type="button"
-                class="px-4 py-2 text-xs font-medium bg-white/[0.06] text-white/60 rounded-md
-                  hover:bg-white/[0.1] transition-colors"
+                class="px-4 py-2 text-sm font-medium bg-[var(--bg-surface)] text-[var(--text-secondary)]
+                  border border-[var(--border)] rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors"
+                style="box-shadow: var(--shadow-sm);"
                 onclick={captureFullScreen}
               >
                 Full Screen
               </button>
             </div>
-            <p class="text-[10px] text-white/15 font-mono">
-              Or drag & drop an image · Ctrl+V to paste
+
+            <p class="text-xs text-[var(--text-faint)] font-mono">
+              Or drag & drop · Ctrl+V to paste
             </p>
           </div>
         </div>
       {/if}
 
+      <!-- Capturing spinner -->
       {#if isCapturing}
         <div
-          class="absolute inset-0 flex items-center justify-center bg-black/30"
+          class="absolute inset-0 flex items-center justify-center"
+          style="background: var(--bg-overlay);"
         >
-          <p class="text-sm text-white/50 font-mono animate-pulse">
-            Capturing...
-          </p>
+          <div
+            class="flex items-center gap-2.5 px-4 py-2.5 bg-[var(--bg-surface)]
+              rounded-lg border border-[var(--border)]"
+            style="box-shadow: var(--shadow-lg);"
+          >
+            <span class="text-sm text-[var(--text-secondary)] animate-pulse"
+              >Capturing…</span
+            >
+          </div>
         </div>
       {/if}
     </div>
@@ -334,7 +437,7 @@
     />
   </div>
 
-  <!-- Export bar (bottom) -->
+  <!-- Export bar (bottom, only when screenshot loaded) -->
   {#if imageSrc}
     <ExportBar
       {promptMarkdown}
@@ -345,7 +448,8 @@
   {/if}
 </main>
 
-<!-- Prompt preview modal -->
+<!-- ── Modals ──────────────────────────────── -->
+
 {#if showPromptPreview}
   <PromptPreview
     {promptMarkdown}
@@ -355,7 +459,6 @@
   />
 {/if}
 
-<!-- Session list modal -->
 {#if showSessionList}
   <SessionList
     {sessionState}
@@ -366,7 +469,6 @@
   />
 {/if}
 
-<!-- Settings modal -->
 {#if showSettings}
   <Settings
     onclose={() => {
@@ -376,10 +478,10 @@
       showSettings = false;
       showIntegrations = true;
     }}
+    onthemechange={handleThemeChange}
   />
 {/if}
 
-<!-- Integration hub modal -->
 {#if showIntegrations}
   <IntegrationHub
     onclose={() => {
@@ -388,12 +490,10 @@
   />
 {/if}
 
-<!-- First-run experience -->
 {#if showFirstRun}
   <FirstRun oncomplete={handleFirstRunComplete} />
 {/if}
 
-<!-- Region overlay (fullscreen, above everything) -->
 {#if showOverlay}
   <RegionOverlay
     onconfirm={handleRegionConfirm}
@@ -401,5 +501,4 @@
   />
 {/if}
 
-<!-- Toast notifications -->
 <Toast {toastState} />

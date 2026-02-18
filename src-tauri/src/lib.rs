@@ -77,6 +77,27 @@ fn capture_screen(monitor_id: u32) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn save_session_capture(session_id: String, image_base64: String) -> Result<(), String> {
+    use base64::Engine;
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(&image_base64)
+        .map_err(|e| format!("Failed to decode image: {e}"))?;
+    let base = storage::default_base_path();
+    let session_dir = base.join("sessions").join(&session_id);
+    if !session_dir.exists() {
+        return Err(format!("Session not found: {session_id}"));
+    }
+    let config = storage::load_config(&base).unwrap_or_default();
+    compression::save_capture(
+        &session_dir,
+        &data,
+        config.compression_max_resolution,
+        config.compression_quality,
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
 fn capture_region(
     monitor_id: u32,
     x: u32,
@@ -161,6 +182,7 @@ pub fn run() {
             list_monitors,
             capture_screen,
             capture_region,
+            save_session_capture,
             check_capture_permission,
             scan_integrations,
             connect_integration,
@@ -194,6 +216,11 @@ pub fn run() {
                 e
             })?;
             log::info!("Storage initialized at {:?}", base);
+
+            // Scale UI for standard-DPI displays (e.g. 1080p on Linux)
+            if let Some(webview) = app.get_webview_window("main") {
+                let _ = webview.set_zoom(1.2);
+            }
 
             // Run auto-cleaner
             let config = storage::load_config(&base).unwrap_or_default();

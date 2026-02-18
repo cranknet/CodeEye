@@ -11,6 +11,7 @@
 
   interface Props {
     annotationState: ReturnType<typeof createAnnotationStore>;
+    canvasBg?: string;
     canvasState: ReturnType<typeof createCanvasStore>;
     imageSrc: string | null;
     onselect?: (id: string | null) => void;
@@ -23,6 +24,7 @@
     annotationState,
     toolState,
     imageSrc,
+    canvasBg = "#e8e8e8",
     selectedId = $bindable(null),
     onselect,
   }: Props = $props();
@@ -93,8 +95,8 @@
       canvasEl.height = height * devicePixelRatio;
       ctx.scale(devicePixelRatio, devicePixelRatio);
 
-      // Clear with dark background
-      ctx.fillStyle = "#0a0a0a";
+      // Clear with theme-aware background
+      ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, width, height);
 
       // Draw image with zoom/pan transform

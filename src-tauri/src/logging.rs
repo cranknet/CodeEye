@@ -1,13 +1,4 @@
-use std::path::PathBuf;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
-
-/// Returns the CodeEye log directory: `~/.codeeye/logs/`
-pub fn log_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("Could not find home directory")
-        .join(".codeeye")
-        .join("logs")
-}
 
 /// Build the configured tauri-plugin-log instance.
 ///
