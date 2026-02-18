@@ -1,35 +1,37 @@
 use super::{
-    read_json_config, run_verify_command, which_exists, write_json_config, McpConfigAdapter,
-    MCP_SERVER_KEY,
+    read_json_config, which_exists, write_json_config, McpConfigAdapter, MCP_SERVER_KEY,
 };
 use std::path::PathBuf;
 
-pub struct ClaudeAdapter;
+pub struct CursorAdapter;
 
-impl ClaudeAdapter {
-    /// Claude Code CLI config: ~/.claude.json
+impl CursorAdapter {
+    /// Cursor global MCP config: ~/.cursor/mcp.json
     fn config_path_inner() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_default()
-            .join(".claude.json")
+            .join(".cursor")
+            .join("mcp.json")
     }
 
     fn mcp_entry(binary_path: &str) -> serde_json::Value {
         serde_json::json!({
-            "type": "stdio",
             "command": binary_path,
             "args": ["--mcp"]
         })
     }
 }
 
-impl McpConfigAdapter for ClaudeAdapter {
+impl McpConfigAdapter for CursorAdapter {
     fn name(&self) -> &str {
-        "Claude Code"
+        "Cursor"
     }
 
     fn is_installed(&self) -> bool {
-        which_exists("claude")
+        which_exists("cursor")
+            || dirs::home_dir()
+                .map(|h| h.join(".cursor").exists())
+                .unwrap_or(false)
     }
 
     fn config_path(&self) -> Option<PathBuf> {
@@ -78,7 +80,8 @@ impl McpConfigAdapter for ClaudeAdapter {
     }
 
     fn verify(&self) -> Result<String, String> {
-        run_verify_command("claude", &["mcp", "list"])
+        // Cursor verification is done via Cursor Settings > MCP (GUI only).
+        Ok("Config written. Open Cursor > Settings > MCP to verify.".into())
     }
 
     fn read_entry(&self) -> Result<String, String> {
@@ -98,7 +101,7 @@ mod tests {
     #[test]
     fn test_connect_creates_mcp_entry() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_path = tmp.path().join(".claude.json");
+        let config_path = tmp.path().join("mcp.json");
 
         std::fs::write(&config_path, "{}").unwrap();
 
@@ -113,12 +116,11 @@ mod tests {
             .unwrap()
             .insert(
                 MCP_SERVER_KEY.to_string(),
-                ClaudeAdapter::mcp_entry("/usr/bin/codeeye"),
+                CursorAdapter::mcp_entry("/usr/bin/codeeye"),
             );
         write_json_config(&config_path, &config).unwrap();
 
         let result = read_json_config(&config_path).unwrap();
-        assert_eq!(result["mcpServers"]["codeeye"]["type"], "stdio");
         assert!(result["mcpServers"]["codeeye"]["command"]
             .as_str()
             .unwrap()
@@ -129,11 +131,11 @@ mod tests {
     #[test]
     fn test_disconnect_removes_mcp_entry() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_path = tmp.path().join(".claude.json");
+        let config_path = tmp.path().join("mcp.json");
 
         let config = serde_json::json!({
             "mcpServers": {
-                "codeeye": { "type": "stdio", "command": "/usr/bin/codeeye", "args": ["--mcp"] },
+                "codeeye": { "command": "/usr/bin/codeeye", "args": ["--mcp"] },
                 "other": { "command": "/usr/bin/other" }
             }
         });
@@ -151,14 +153,13 @@ mod tests {
     }
 
     #[test]
-    fn test_connect_preserves_existing_keys() {
+    fn test_connect_preserves_existing_servers() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_path = tmp.path().join(".claude.json");
+        let config_path = tmp.path().join("mcp.json");
 
         let config = serde_json::json!({
-            "someOtherKey": "preserved",
             "mcpServers": {
-                "existing": { "command": "foo" }
+                "github": { "command": "gh-mcp", "args": ["serve"] }
             }
         });
         write_json_config(&config_path, &config).unwrap();
@@ -174,13 +175,12 @@ mod tests {
             .unwrap()
             .insert(
                 MCP_SERVER_KEY.to_string(),
-                ClaudeAdapter::mcp_entry("/usr/bin/codeeye"),
+                CursorAdapter::mcp_entry("/usr/bin/codeeye"),
             );
         write_json_config(&config_path, &config).unwrap();
 
         let result = read_json_config(&config_path).unwrap();
-        assert_eq!(result["someOtherKey"], "preserved");
-        assert!(result["mcpServers"]["existing"]["command"].is_string());
-        assert_eq!(result["mcpServers"]["codeeye"]["type"], "stdio");
+        assert!(result["mcpServers"]["github"]["command"].is_string());
+        assert!(result["mcpServers"]["codeeye"]["command"].is_string());
     }
 }

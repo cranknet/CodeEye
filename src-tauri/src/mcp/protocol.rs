@@ -58,9 +58,16 @@ pub struct ToolDefinition {
 }
 
 /// MCP tool call result content item.
-#[derive(Debug, Serialize)]
-pub struct ToolContent {
-    #[serde(rename = "type")]
-    pub content_type: String,
-    pub text: String,
+/// Supports text and image content blocks per the MCP specification.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "type")]
+pub enum ToolContent {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image")]
+    Image {
+        data: String,
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+    },
 }

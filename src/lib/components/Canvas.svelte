@@ -79,8 +79,12 @@
       throw new Error("Canvas 2D context not available");
     }
     ctx = context;
+    canvasState.setCanvasEl(canvasEl);
     startRenderLoop();
-    return () => cancelAnimationFrame(animFrameId);
+    return () => {
+      cancelAnimationFrame(animFrameId);
+      canvasState.setCanvasEl(null);
+    };
   });
 
   $effect(() => {

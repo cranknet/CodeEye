@@ -2,8 +2,18 @@ use image::{GenericImageView, ImageFormat};
 use std::io::Cursor;
 use std::path::Path;
 
-/// Compress an image: resize if larger than max_dimension (preserving aspect ratio), output as PNG.
-pub fn compress_image(data: &[u8], max_dimension: u32, _quality: u8) -> Result<Vec<u8>, String> {
+/// Compress an image: resize if larger than max_dimension (preserving aspect ratio).
+/// Supports "png" and "webp" output formats.
+///
+/// Note: `quality` is currently unused — both PNG and WebP use lossless encoding.
+/// The `image` crate's built-in WebP encoder only supports lossless mode. The param
+/// is retained for forward-compat when lossy JPEG/WebP support is added via external crates.
+pub fn compress_image(
+    data: &[u8],
+    max_dimension: u32,
+    _quality: u8,
+    format: &str,
+) -> Result<Vec<u8>, String> {
     let img =
         image::load_from_memory(data).map_err(|e| format!("Failed to load image: {}", e))?;
 
@@ -11,15 +21,24 @@ pub fn compress_image(data: &[u8], max_dimension: u32, _quality: u8) -> Result<V
 
     let img = if w > max_dimension || h > max_dimension {
         // Resize preserving aspect ratio — fit within max_dimension box
-        img.resize(max_dimension, max_dimension, image::imageops::FilterType::Lanczos3)
+        img.resize(
+            max_dimension,
+            max_dimension,
+            image::imageops::FilterType::Lanczos3,
+        )
     } else {
         img
     };
 
     let mut buf = Vec::new();
     let mut cursor = Cursor::new(&mut buf);
-    img.write_to(&mut cursor, ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode image: {}", e))?;
+
+    let output_format = match format {
+        "webp" => ImageFormat::WebP,
+        _ => ImageFormat::Png,
+    };
+    img.write_to(&mut cursor, output_format)
+        .map_err(|e| format!("Failed to encode image as {format}: {}", e))?;
 
     Ok(buf)
 }
@@ -31,13 +50,18 @@ pub fn save_capture(
     original_data: &[u8],
     max_dimension: u32,
     quality: u8,
+    format: &str,
 ) -> Result<(String, String), String> {
     let original_path = session_dir.join("original.png");
     std::fs::write(&original_path, original_data)
         .map_err(|e| format!("Failed to write original: {}", e))?;
 
-    let compressed_data = compress_image(original_data, max_dimension, quality)?;
-    let compressed_path = session_dir.join("compressed.png");
+    let compressed_data = compress_image(original_data, max_dimension, quality, format)?;
+    let ext = match format {
+        "webp" => "webp",
+        _ => "png",
+    };
+    let compressed_path = session_dir.join(format!("compressed.{ext}"));
     std::fs::write(&compressed_path, &compressed_data)
         .map_err(|e| format!("Failed to write compressed: {}", e))?;
 
@@ -64,7 +88,7 @@ mod tests {
     #[test]
     fn test_compress_resizes_large_image() {
         let data = create_test_image(3840, 2160);
-        let result = compress_image(&data, 1920, 85).unwrap();
+        let result = compress_image(&data, 1920, 85, "png").unwrap();
         let img = image::load_from_memory(&result).unwrap();
         assert!(img.width() <= 1920);
         assert!(img.height() <= 1920);
@@ -73,7 +97,7 @@ mod tests {
     #[test]
     fn test_compress_preserves_small_image() {
         let data = create_test_image(800, 600);
-        let result = compress_image(&data, 1920, 85).unwrap();
+        let result = compress_image(&data, 1920, 85, "png").unwrap();
         let img = image::load_from_memory(&result).unwrap();
         assert_eq!(img.width(), 800);
         assert_eq!(img.height(), 600);
@@ -82,7 +106,7 @@ mod tests {
     #[test]
     fn test_compress_preserves_aspect_ratio() {
         let data = create_test_image(3840, 2160);
-        let result = compress_image(&data, 1920, 85).unwrap();
+        let result = compress_image(&data, 1920, 85, "png").unwrap();
         let img = image::load_from_memory(&result).unwrap();
         let ratio = img.width() as f64 / img.height() as f64;
         let expected_ratio = 3840.0 / 2160.0;
@@ -95,11 +119,32 @@ mod tests {
     }
 
     #[test]
+    fn test_compress_webp_format() {
+        let data = create_test_image(800, 600);
+        let result = compress_image(&data, 1920, 85, "webp").unwrap();
+        // WebP files start with RIFF....WEBP magic bytes
+        assert!(result.len() >= 12);
+        assert_eq!(&result[0..4], b"RIFF");
+        assert_eq!(&result[8..12], b"WEBP");
+    }
+
+    #[test]
     fn test_save_capture_creates_both_files() {
         let tmp = tempfile::TempDir::new().unwrap();
         let data = create_test_image(800, 600);
-        let (orig, comp) = save_capture(tmp.path(), &data, 1920, 85).unwrap();
+        let (orig, comp) = save_capture(tmp.path(), &data, 1920, 85, "png").unwrap();
         assert!(std::path::Path::new(&orig).exists());
         assert!(std::path::Path::new(&comp).exists());
+        assert!(comp.ends_with("compressed.png"));
+    }
+
+    #[test]
+    fn test_save_capture_webp_extension() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let data = create_test_image(800, 600);
+        let (orig, comp) = save_capture(tmp.path(), &data, 1920, 85, "webp").unwrap();
+        assert!(std::path::Path::new(&orig).exists());
+        assert!(std::path::Path::new(&comp).exists());
+        assert!(comp.ends_with("compressed.webp"));
     }
 }

@@ -23,6 +23,8 @@ export function createSessionStore() {
   let currentSessionId: string | null = $state(null);
   let sessions: SessionMeta[] = $state([]);
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingSaveMeta: Partial<SessionMeta> | null = null;
+  let autoSaveEnabled = true;
 
   /** Load session list from Rust backend */
   async function loadSessions() {
@@ -74,9 +76,23 @@ export function createSessionStore() {
     if (saveTimer) {
       clearTimeout(saveTimer);
     }
+    pendingSaveMeta = meta;
     saveTimer = setTimeout(() => {
       save(meta);
     }, 500);
+  }
+
+  /** Flush any pending debounced save immediately. Returns when save completes. */
+  async function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (pendingSaveMeta) {
+      const meta = pendingSaveMeta;
+      pendingSaveMeta = null;
+      await save(meta);
+    }
   }
 
   /** Persist session metadata to Rust backend */
@@ -161,11 +177,19 @@ export function createSessionStore() {
       return sessions;
     },
 
+    get autoSaveEnabled() {
+      return autoSaveEnabled;
+    },
+    set autoSaveEnabled(v: boolean) {
+      autoSaveEnabled = v;
+    },
+
     loadSessions,
     loadSession,
     createSession,
     deleteSession,
     scheduleSave,
+    flushSave,
 
     setCurrentSession(id: string | null) {
       currentSessionId = id;

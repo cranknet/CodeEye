@@ -14,7 +14,17 @@ export function createCanvasStore() {
   let frames = $state<string[]>([]);
   let currentFrame = $state(0);
 
+  // Canvas element reference (set by Canvas component)
+  let canvasEl: HTMLCanvasElement | null = $state(null);
+
   return {
+    get canvasEl() {
+      return canvasEl;
+    },
+    setCanvasEl(el: HTMLCanvasElement | null) {
+      canvasEl = el;
+    },
+
     get zoom() {
       return zoom;
     },
@@ -109,6 +119,11 @@ export function createCanvasStore() {
         x: ix * zoom + panX,
         y: iy * zoom + panY,
       };
+    },
+
+    /** Export the current canvas content as a base64 data URL. Returns null if canvas unavailable. */
+    exportToDataUrl(mimeType = "image/png"): string | null {
+      return canvasEl?.toDataURL(mimeType) ?? null;
     },
   };
 }

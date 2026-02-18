@@ -1,4 +1,5 @@
 use crate::storage;
+use image::GenericImageView;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -98,7 +99,7 @@ fn list_ui_feedback(
     let filtered: Vec<_> = sessions
         .into_iter()
         .filter(|s| status_filter == "all" || s.status == status_filter)
-        .filter(|s| project_filter.map_or(true, |p| s.project == p))
+        .filter(|s| project_filter.is_none_or(|p| s.project == p))
         .take(limit)
         .collect();
 
@@ -115,8 +116,7 @@ fn list_ui_feedback(
         "total": filtered.len(),
     });
 
-    Ok(vec![ToolContent {
-        content_type: "text".into(),
+    Ok(vec![ToolContent::Text {
         text: serde_json::to_string_pretty(&output).unwrap(),
     }])
 }
@@ -137,24 +137,46 @@ fn get_ui_feedback(
         return Err(format!("Session not found: {session_id}"));
     }
 
-    let meta_str =
-        fs::read_to_string(&meta_path).map_err(|e| format!("Failed to read meta: {e}"))?;
-    let meta: serde_json::Value =
-        serde_json::from_str(&meta_str).map_err(|e| format!("Failed to parse meta: {e}"))?;
+    let config = storage::load_config(base).unwrap_or_default();
+    let mut content = Vec::new();
 
-    // Read compressed image if available, fall back to original
-    let image_base64 = read_image_base64(&session_dir);
+    // Prompt block: read prompt.md if available
+    if config.mcp_include_prompt {
+        let prompt_path = session_dir.join("prompt.md");
+        if prompt_path.exists() {
+            let prompt = fs::read_to_string(&prompt_path)
+                .map_err(|e| format!("Failed to read prompt: {e}"))?;
+            content.push(ToolContent::Text { text: prompt });
+        }
+    }
 
-    let output = json!({
-        "session_id": session_id,
-        "meta": meta,
-        "image_base64": image_base64,
-    });
+    // Metadata block: full session metadata JSON
+    if config.mcp_include_metadata {
+        let meta_str = fs::read_to_string(&meta_path)
+            .map_err(|e| format!("Failed to read meta: {e}"))?;
+        content.push(ToolContent::Text { text: meta_str });
+    }
 
-    Ok(vec![ToolContent {
-        content_type: "text".into(),
-        text: serde_json::to_string_pretty(&output).unwrap(),
-    }])
+    // Image block: annotated screenshot (respects MCP resolution limit)
+    if config.mcp_include_image {
+        if let Some((image_b64, mime_type)) =
+            read_image_base64(&session_dir, config.mcp_image_max_resolution)
+        {
+            content.push(ToolContent::Image {
+                data: image_b64,
+                mime_type,
+            });
+        }
+    }
+
+    // Fallback: if all toggles are off, return meta so the response isn't empty
+    if content.is_empty() {
+        let meta_str = fs::read_to_string(&meta_path)
+            .map_err(|e| format!("Failed to read meta: {e}"))?;
+        content.push(ToolContent::Text { text: meta_str });
+    }
+
+    Ok(content)
 }
 
 fn resolve_ui_feedback(
@@ -200,8 +222,7 @@ fn resolve_ui_feedback(
     }
     storage::save_index(base, &index)?;
 
-    Ok(vec![ToolContent {
-        content_type: "text".into(),
+    Ok(vec![ToolContent::Text {
         text: json!({
             "session_id": session_id,
             "status": "resolved",
@@ -212,15 +233,49 @@ fn resolve_ui_feedback(
 }
 
 /// Read the best available image as base64, preferring compressed over original.
-fn read_image_base64(session_dir: &Path) -> Option<String> {
-    let candidates = ["compressed.png", "annotated.png", "original.png"];
-    for name in &candidates {
+/// If `max_resolution > 0`, re-compresses images exceeding that dimension.
+/// Returns (base64_data, mime_type).
+fn read_image_base64(session_dir: &Path, max_resolution: u32) -> Option<(String, String)> {
+    let candidates = [
+        ("compressed.webp", "image/webp", "webp"),
+        ("compressed.png", "image/png", "png"),
+        ("annotated.png", "image/png", "png"),
+        ("original.png", "image/png", "png"),
+    ];
+    for (name, mime, format) in &candidates {
         let path = session_dir.join(name);
         if path.exists() {
             if let Ok(bytes) = fs::read(&path) {
-                return Some(base64::Engine::encode(
-                    &base64::engine::general_purpose::STANDARD,
-                    &bytes,
+                let final_bytes = if max_resolution > 0 {
+                    // Check if resize is needed before re-encoding
+                    let needs_resize = image::load_from_memory(&bytes)
+                        .map(|img| {
+                            let (w, h) = img.dimensions();
+                            w > max_resolution || h > max_resolution
+                        })
+                        .unwrap_or(false);
+
+                    if needs_resize {
+                        crate::compression::compress_image(
+                            &bytes,
+                            max_resolution,
+                            85,
+                            format,
+                        )
+                        .unwrap_or(bytes)
+                    } else {
+                        bytes
+                    }
+                } else {
+                    bytes
+                };
+
+                return Some((
+                    base64::Engine::encode(
+                        &base64::engine::general_purpose::STANDARD,
+                        &final_bytes,
+                    ),
+                    (*mime).to_string(),
                 ));
             }
         }

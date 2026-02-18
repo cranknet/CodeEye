@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Annotation } from "$lib/state/annotations.svelte";
-import { generatePrompt, type PromptInput } from "./export";
+import {
+  DEFAULT_PROMPT_TEMPLATE,
+  generatePrompt,
+  type PromptInput,
+  renderTemplate,
+} from "./export";
 
 function makeAnnotation(overrides: Partial<Annotation> = {}): Annotation {
   return {
@@ -141,5 +146,100 @@ describe("generatePrompt", () => {
     expect(result).toContain("# UI Feedback Report");
     expect(result).not.toContain("## Notes");
     expect(result).not.toContain("## Issues");
+  });
+});
+
+describe("renderTemplate", () => {
+  it("substitutes all variables from a custom template", () => {
+    const template = "Page: {{page_name}}\nBranch: {{branch}}";
+    const input: PromptInput = {
+      pageName: "Home",
+      generalNotes: "",
+      annotations: [],
+      gitContext: {
+        project: "proj",
+        branch: "main",
+        working_directory: "/tmp",
+        suggested_file: null,
+        recent_diff: null,
+      },
+    };
+    const result = renderTemplate(template, input);
+    expect(result).toBe("Page: Home\nBranch: main");
+  });
+
+  it("strips empty sections from default template", () => {
+    const input: PromptInput = {
+      pageName: "/page",
+      generalNotes: "",
+      annotations: [],
+    };
+    const result = renderTemplate(DEFAULT_PROMPT_TEMPLATE, input);
+    expect(result).not.toContain("## Notes");
+    expect(result).not.toContain("## Issues");
+    expect(result).not.toContain("## Recent Changes");
+  });
+
+  it("strips lines with empty label values", () => {
+    const input: PromptInput = {
+      pageName: "Test",
+      generalNotes: "",
+      annotations: [],
+    };
+    const result = renderTemplate(DEFAULT_PROMPT_TEMPLATE, input);
+    expect(result).not.toContain("**Project:**");
+    expect(result).not.toContain("**Branch:**");
+    expect(result).not.toContain("**File:**");
+    expect(result).not.toContain("**Viewport:**");
+    expect(result).toContain("**Page:** Test");
+  });
+
+  it("renders annotations in custom template", () => {
+    const template = "Issues:\n{{annotations}}";
+    const ann = makeAnnotation({ number: 1, severity: "critical" });
+    const input: PromptInput = {
+      pageName: "",
+      generalNotes: "",
+      annotations: [ann],
+    };
+    const result = renderTemplate(template, input);
+    expect(result).toContain("### #1 [CRITICAL]");
+    expect(result).toContain("**Position:**");
+  });
+
+  it("renders viewport as WxH", () => {
+    const template = "Size: {{viewport}}";
+    const input: PromptInput = {
+      pageName: "",
+      generalNotes: "",
+      annotations: [],
+      viewport: { width: 1920, height: 1080 },
+    };
+    const result = renderTemplate(template, input);
+    expect(result).toBe("Size: 1920×1080");
+  });
+
+  it("handles unknown variables by removing them", () => {
+    const template = "Hello {{unknown_var}} world";
+    const input: PromptInput = {
+      pageName: "",
+      generalNotes: "",
+      annotations: [],
+    };
+    const result = renderTemplate(template, input);
+    expect(result).toBe("Hello  world");
+  });
+
+  it("prepends free-text instruction", () => {
+    const template = "# Report\n{{page_name}}";
+    const input: PromptInput = {
+      pageName: "Home",
+      generalNotes: "",
+      annotations: [],
+      freeTextInstruction: "Fix this urgently",
+    };
+    const result = renderTemplate(template, input);
+    expect(result.startsWith("Fix this urgently")).toBe(true);
+    expect(result).toContain("# Report");
   });
 });

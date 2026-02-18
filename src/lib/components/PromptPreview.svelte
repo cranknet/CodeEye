@@ -98,7 +98,7 @@
           rounded font-medium transition-colors"
         onclick={copyAndClose}
       >
-        {copied ? "Copied!" : "Copy & Send"}
+        {copied ? "Copied!" : "Copy"}
       </button>
     </div>
   </div>
