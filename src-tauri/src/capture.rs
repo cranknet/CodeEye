@@ -126,4 +126,5 @@ mod tests {
         // Should not panic regardless of platform
         let _result = check_capture_permission();
     }
+
 }
