@@ -1,12 +1,15 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import Canvas from "$lib/components/Canvas.svelte";
+  import ExportBar from "$lib/components/ExportBar.svelte";
+  import PromptPreview from "$lib/components/PromptPreview.svelte";
   import RegionOverlay from "$lib/components/RegionOverlay.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { createAnnotationStore } from "$lib/state/annotations.svelte";
   import { createCanvasStore } from "$lib/state/canvas.svelte";
   import { createToolStore } from "$lib/state/tools.svelte";
+  import { generatePrompt } from "$lib/utils/export";
 
   // App-level stores — single source of truth
   const canvasState = createCanvasStore();
@@ -24,6 +27,22 @@
   let imageSrc: string | null = $state(null);
   let showOverlay = $state(false);
   let isCapturing = $state(false);
+
+  // Prompt preview
+  let showPromptPreview = $state(false);
+
+  // Derived prompt markdown
+  let promptMarkdown = $derived(
+    generatePrompt({
+      pageName,
+      generalNotes,
+      annotations: annotationState.annotations,
+      viewport:
+        canvasState.imageWidth > 0
+          ? { width: canvasState.imageWidth, height: canvasState.imageHeight }
+          : undefined,
+    })
+  );
 
   /** Start the capture flow: show the region overlay */
   function startCapture() {
@@ -165,7 +184,23 @@
       }}
     />
   </div>
+
+  <!-- Export bar (bottom) -->
+  {#if imageSrc}
+    <ExportBar
+      {promptMarkdown}
+      onshowpreview={() => { showPromptPreview = true; }}
+    />
+  {/if}
 </main>
+
+<!-- Prompt preview modal -->
+{#if showPromptPreview}
+  <PromptPreview
+    {promptMarkdown}
+    onclose={() => { showPromptPreview = false; }}
+  />
+{/if}
 
 <!-- Region overlay (fullscreen, above everything) -->
 {#if showOverlay}
