@@ -74,7 +74,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fixed inset-0 z-50 flex items-stretch bg-black/60 backdrop-blur-sm"
-  onmousedown|self={onclose}
+  onmousedown={(e) => { if (e.target === e.currentTarget) onclose(); }}
 >
   <div
     class="flex flex-1 m-4 rounded-xl overflow-hidden bg-[var(--bg-app)] border border-[var(--border)]"
