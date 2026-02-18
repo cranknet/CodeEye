@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/biome/core", "ultracite/biome/svelte"],
+  "files": {
+    "includes": ["!ui-feedback-mcp", "!ui-feedback-playground.html"]
+  },
+  "javascript": {
+    "globals": [
+      "$state",
+      "$derived",
+      "$effect",
+      "$props",
+      "$bindable",
+      "$inspect"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case", "PascalCase"]
+          }
+        }
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Biome cannot analyze Svelte template bindings — {#each} block variables,
+      // event handler references (onkeydown={fn}), and script-to-template references
+      // all produce false positives for these two rules.
+      "includes": ["**/*.svelte"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            // Biome can't see Svelte template references ({#each} scoping,
+            // event bindings like onkeydown={fn})
+            "noUndeclaredVariables": "off",
+            "noUnusedVariables": "off"
+          },
+          "suspicious": {
+            // Biome can't see bind:this={el} assignments in Svelte templates
+            "noUnassignedVariables": "off"
+          }
+        }
+      }
+    }
+  ]
+}

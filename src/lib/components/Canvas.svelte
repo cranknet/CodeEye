@@ -1,20 +1,22 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import type { Point, Rect } from '$lib/utils/geometry';
-  import { pointInRect } from '$lib/utils/geometry';
-  import type { createCanvasStore } from '$lib/state/canvas.svelte';
-  import type { createAnnotationStore } from '$lib/state/annotations.svelte';
-  import type { Annotation } from '$lib/state/annotations.svelte';
-  import type { createToolStore } from '$lib/state/tools.svelte';
+  import { onMount } from "svelte";
+  import type {
+    Annotation,
+    createAnnotationStore,
+  } from "$lib/state/annotations.svelte";
+  import type { createCanvasStore } from "$lib/state/canvas.svelte";
+  import type { createToolStore } from "$lib/state/tools.svelte";
+  import type { Point, Rect } from "$lib/utils/geometry";
+  import { pointInRect } from "$lib/utils/geometry";
 
-  type Props = {
-    canvasState: ReturnType<typeof createCanvasStore>;
+  interface Props {
     annotationState: ReturnType<typeof createAnnotationStore>;
-    toolState: ReturnType<typeof createToolStore>;
+    canvasState: ReturnType<typeof createCanvasStore>;
     imageSrc: string | null;
-    selectedId?: string | null;
     onselect?: (id: string | null) => void;
-  };
+    selectedId?: string | null;
+    toolState: ReturnType<typeof createToolStore>;
+  }
 
   let {
     canvasState,
@@ -42,7 +44,7 @@
   let lastPanY = 0;
 
   // Select/move/resize state
-  type DragMode = 'move' | 'resize' | null;
+  type DragMode = "move" | "resize" | null;
   let dragMode: DragMode = $state(null);
   let dragHandleIndex = $state(-1); // which of the 8 handles
   let dragStartImg: Point | null = $state(null);
@@ -54,13 +56,17 @@
 
   // Severity color map
   const SEVERITY_COLORS: Record<string, string> = {
-    critical: '#ef4444',
-    minor: '#eab308',
-    suggestion: '#3b82f6',
+    critical: "#ef4444",
+    minor: "#eab308",
+    suggestion: "#3b82f6",
   };
 
   onMount(() => {
-    ctx = canvasEl.getContext('2d')!;
+    const context = canvasEl.getContext("2d");
+    if (!context) {
+      throw new Error("Canvas 2D context not available");
+    }
+    ctx = context;
     startRenderLoop();
     return () => cancelAnimationFrame(animFrameId);
   });
@@ -78,7 +84,9 @@
 
   function startRenderLoop() {
     function render() {
-      if (!ctx) return;
+      if (!ctx) {
+        return;
+      }
       const rect = canvasEl.getBoundingClientRect();
       const { width, height } = rect;
       canvasEl.width = width * devicePixelRatio;
@@ -86,7 +94,7 @@
       ctx.scale(devicePixelRatio, devicePixelRatio);
 
       // Clear with dark background
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = "#0a0a0a";
       ctx.fillRect(0, 0, width, height);
 
       // Draw image with zoom/pan transform
@@ -103,8 +111,12 @@
 
       // Draw resize handles for selected
       if (selectedId) {
-        const sel = annotationState.annotations.find((a) => a.id === selectedId);
-        if (sel) drawResizeHandles(sel);
+        const sel = annotationState.annotations.find(
+          (a) => a.id === selectedId
+        );
+        if (sel) {
+          drawResizeHandles(sel);
+        }
       }
 
       // Draw active drawing preview
@@ -121,22 +133,27 @@
    * 0=TL, 1=TC, 2=TR, 3=ML, 4=MR, 5=BL, 6=BC, 7=BR */
   function getHandlePositions(b: Rect): Point[] {
     return [
-      { x: b.x, y: b.y },                           // 0: top-left
-      { x: b.x + b.w / 2, y: b.y },                 // 1: top-center
-      { x: b.x + b.w, y: b.y },                     // 2: top-right
-      { x: b.x, y: b.y + b.h / 2 },                 // 3: mid-left
-      { x: b.x + b.w, y: b.y + b.h / 2 },           // 4: mid-right
-      { x: b.x, y: b.y + b.h },                     // 5: bottom-left
-      { x: b.x + b.w / 2, y: b.y + b.h },           // 6: bottom-center
-      { x: b.x + b.w, y: b.y + b.h },               // 7: bottom-right
+      { x: b.x, y: b.y }, // 0: top-left
+      { x: b.x + b.w / 2, y: b.y }, // 1: top-center
+      { x: b.x + b.w, y: b.y }, // 2: top-right
+      { x: b.x, y: b.y + b.h / 2 }, // 3: mid-left
+      { x: b.x + b.w, y: b.y + b.h / 2 }, // 4: mid-right
+      { x: b.x, y: b.y + b.h }, // 5: bottom-left
+      { x: b.x + b.w / 2, y: b.y + b.h }, // 6: bottom-center
+      { x: b.x + b.w, y: b.y + b.h }, // 7: bottom-right
     ];
   }
 
   /** Cursor style for each resize handle index */
   const HANDLE_CURSORS = [
-    'nwse-resize', 'ns-resize', 'nesw-resize',
-    'ew-resize', 'ew-resize',
-    'nesw-resize', 'ns-resize', 'nwse-resize',
+    "nwse-resize",
+    "ns-resize",
+    "nesw-resize",
+    "ew-resize",
+    "ew-resize",
+    "nesw-resize",
+    "ns-resize",
+    "nwse-resize",
   ];
 
   function drawResizeHandles(ann: Annotation) {
@@ -145,8 +162,8 @@
 
     for (const hp of handles) {
       const screen = canvasState.imageToScreen(hp.x, hp.y);
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#f97316';
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#f97316";
       ctx.lineWidth = 1.5;
       ctx.fillRect(screen.x - size / 2, screen.y - size / 2, size, size);
       ctx.strokeRect(screen.x - size / 2, screen.y - size / 2, size, size);
@@ -179,7 +196,7 @@
       ctx.scale(canvasState.zoom, canvasState.zoom);
 
       // Shadow for visibility on any background
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
       ctx.shadowBlur = 4;
       ctx.shadowOffsetX = 1;
       ctx.shadowOffsetY = 1;
@@ -207,10 +224,10 @@
 
   function drawAnnotationShape(ann: Annotation) {
     switch (ann.type) {
-      case 'rectangle':
+      case "rectangle":
         ctx.strokeRect(ann.bounds.x, ann.bounds.y, ann.bounds.w, ann.bounds.h);
         break;
-      case 'circle':
+      case "circle":
         ctx.beginPath();
         ctx.ellipse(
           ann.bounds.x + ann.bounds.w / 2,
@@ -219,16 +236,16 @@
           Math.abs(ann.bounds.h / 2),
           0,
           0,
-          Math.PI * 2,
+          Math.PI * 2
         );
         ctx.stroke();
         break;
-      case 'arrow':
+      case "arrow":
         if (ann.points && ann.points.length >= 2) {
           drawArrow(ann.points[0], ann.points[1]);
         }
         break;
-      case 'freehand':
+      case "freehand":
         if (ann.points && ann.points.length > 1) {
           ctx.beginPath();
           ctx.moveTo(ann.points[0].x, ann.points[0].y);
@@ -238,12 +255,19 @@
           ctx.stroke();
         }
         break;
-      case 'text':
+      case "text": {
         ctx.shadowBlur = 0;
         ctx.fillStyle = SEVERITY_COLORS[ann.severity] ?? ann.color;
         const fontSize = 16 / canvasState.zoom;
         ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-        ctx.fillText(ann.label || 'Text', ann.bounds.x, ann.bounds.y + fontSize);
+        ctx.fillText(
+          ann.label || "Text",
+          ann.bounds.x,
+          ann.bounds.y + fontSize
+        );
+        break;
+      }
+      default:
         break;
     }
   }
@@ -262,12 +286,12 @@
     ctx.moveTo(to.x, to.y);
     ctx.lineTo(
       to.x - headLen * Math.cos(angle - Math.PI / 6),
-      to.y - headLen * Math.sin(angle - Math.PI / 6),
+      to.y - headLen * Math.sin(angle - Math.PI / 6)
     );
     ctx.moveTo(to.x, to.y);
     ctx.lineTo(
       to.x - headLen * Math.cos(angle + Math.PI / 6),
-      to.y - headLen * Math.sin(angle + Math.PI / 6),
+      to.y - headLen * Math.sin(angle + Math.PI / 6)
     );
     ctx.stroke();
   }
@@ -280,42 +304,51 @@
     ctx.shadowBlur = 0;
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(bx + badgeSize / 2, by + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
+    ctx.arc(
+      bx + badgeSize / 2,
+      by + badgeSize / 2,
+      badgeSize / 2,
+      0,
+      Math.PI * 2
+    );
     ctx.fill();
 
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = "#ffffff";
     const fontSize = 11 / canvasState.zoom;
     ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(String(ann.number), bx + badgeSize / 2, by + badgeSize / 2);
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
   }
 
   // ─── Drawing Preview ──────────────────────────────────
 
   function drawPreview() {
-    if (!isDrawing || !drawStart) return;
+    if (!(isDrawing && drawStart)) {
+      return;
+    }
 
     ctx.save();
     ctx.translate(canvasState.panX, canvasState.panY);
     ctx.scale(canvasState.zoom, canvasState.zoom);
 
-    ctx.strokeStyle = SEVERITY_COLORS[toolState.activeSeverity] ?? toolState.activeColor;
+    ctx.strokeStyle =
+      SEVERITY_COLORS[toolState.activeSeverity] ?? toolState.activeColor;
     ctx.lineWidth = 2 / canvasState.zoom;
     ctx.setLineDash([4 / canvasState.zoom, 4 / canvasState.zoom]);
     ctx.globalAlpha = 0.7;
 
     const tool = toolState.activeTool;
 
-    if (tool === 'rectangle' && drawEnd) {
+    if (tool === "rectangle" && drawEnd) {
       const x = Math.min(drawStart.x, drawEnd.x);
       const y = Math.min(drawStart.y, drawEnd.y);
       const w = Math.abs(drawEnd.x - drawStart.x);
       const h = Math.abs(drawEnd.y - drawStart.y);
       ctx.strokeRect(x, y, w, h);
-    } else if (tool === 'circle' && drawEnd) {
+    } else if (tool === "circle" && drawEnd) {
       const cx = (drawStart.x + drawEnd.x) / 2;
       const cy = (drawStart.y + drawEnd.y) / 2;
       const rx = Math.abs(drawEnd.x - drawStart.x) / 2;
@@ -323,9 +356,9 @@
       ctx.beginPath();
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
       ctx.stroke();
-    } else if (tool === 'arrow' && drawEnd) {
+    } else if (tool === "arrow" && drawEnd) {
       drawArrow(drawStart, drawEnd);
-    } else if (tool === 'freehand' && freehandPoints.length > 1) {
+    } else if (tool === "freehand" && freehandPoints.length > 1) {
       ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(freehandPoints[0].x, freehandPoints[0].y);
@@ -347,8 +380,55 @@
     canvasState.zoomTo(
       canvasState.zoom * delta,
       e.clientX - rect.left,
-      e.clientY - rect.top,
+      e.clientY - rect.top
     );
+  }
+
+  /** Handle select-tool mouse down: resize handles, hit-test, or deselect */
+  function handleSelectDown(screenPos: Point, imgPos: Point) {
+    // Priority 1: check resize handles on selected annotation
+    if (selectedId) {
+      const sel = annotationState.annotations.find((a) => a.id === selectedId);
+      if (sel) {
+        const hIdx = hitTestHandles(screenPos, sel);
+        if (hIdx >= 0) {
+          dragMode = "resize";
+          dragHandleIndex = hIdx;
+          dragStartImg = imgPos;
+          dragOrigBounds = { ...sel.bounds };
+          dragOrigPoints = sel.points
+            ? sel.points.map((p) => ({ ...p }))
+            : null;
+          return;
+        }
+      }
+    }
+
+    // Priority 2: hit-test annotation bodies (reverse order, topmost first)
+    const hit = findTopmostAnnotation(imgPos);
+
+    if (hit) {
+      selectedId = hit.id;
+      onselect?.(hit.id);
+      dragMode = "move";
+      dragStartImg = imgPos;
+      dragOrigBounds = { ...hit.bounds };
+      dragOrigPoints = hit.points ? hit.points.map((p) => ({ ...p })) : null;
+    } else {
+      selectedId = null;
+      onselect?.(null);
+    }
+  }
+
+  /** Find the topmost annotation at a given image-space point */
+  function findTopmostAnnotation(imgPos: Point): Annotation | null {
+    for (let i = annotationState.annotations.length - 1; i >= 0; i--) {
+      const ann = annotationState.annotations[i];
+      if (hitTestAnnotation(imgPos, ann)) {
+        return ann;
+      }
+    }
+    return null;
   }
 
   function handleMouseDown(e: MouseEvent) {
@@ -360,7 +440,9 @@
       return;
     }
 
-    if (e.button !== 0) return;
+    if (e.button !== 0) {
+      return;
+    }
 
     const rect = canvasEl.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
@@ -368,46 +450,8 @@
     const screenPos: Point = { x: screenX, y: screenY };
     const imgPos = canvasState.screenToImage(screenX, screenY);
 
-    const tool = toolState.activeTool;
-
-    if (tool === 'select') {
-      // Priority 1: check resize handles on selected annotation
-      if (selectedId) {
-        const sel = annotationState.annotations.find((a) => a.id === selectedId);
-        if (sel) {
-          const hIdx = hitTestHandles(screenPos, sel);
-          if (hIdx >= 0) {
-            dragMode = 'resize';
-            dragHandleIndex = hIdx;
-            dragStartImg = imgPos;
-            dragOrigBounds = { ...sel.bounds };
-            dragOrigPoints = sel.points ? sel.points.map((p) => ({ ...p })) : null;
-            return;
-          }
-        }
-      }
-
-      // Priority 2: hit-test annotation bodies (reverse order, topmost first)
-      let hit: Annotation | null = null;
-      for (let i = annotationState.annotations.length - 1; i >= 0; i--) {
-        const ann = annotationState.annotations[i];
-        if (hitTestAnnotation(imgPos, ann)) {
-          hit = ann;
-          break;
-        }
-      }
-
-      if (hit) {
-        selectedId = hit.id;
-        onselect?.(hit.id);
-        dragMode = 'move';
-        dragStartImg = imgPos;
-        dragOrigBounds = { ...hit.bounds };
-        dragOrigPoints = hit.points ? hit.points.map((p) => ({ ...p })) : null;
-      } else {
-        selectedId = null;
-        onselect?.(null);
-      }
+    if (toolState.activeTool === "select") {
+      handleSelectDown(screenPos, imgPos);
       return;
     }
 
@@ -416,7 +460,7 @@
     drawStart = imgPos;
     drawEnd = imgPos;
 
-    if (tool === 'freehand') {
+    if (toolState.activeTool === "freehand") {
       freehandPoints = [imgPos];
     }
   }
@@ -434,12 +478,12 @@
       const rect = canvasEl.getBoundingClientRect();
       const imgPos = canvasState.screenToImage(
         e.clientX - rect.left,
-        e.clientY - rect.top,
+        e.clientY - rect.top
       );
       const dx = imgPos.x - dragStartImg.x;
       const dy = imgPos.y - dragStartImg.y;
 
-      if (dragMode === 'move') {
+      if (dragMode === "move") {
         const newBounds: Rect = {
           x: dragOrigBounds.x + dx,
           y: dragOrigBounds.y + dy,
@@ -448,27 +492,38 @@
         };
         const changes: Partial<Annotation> = { bounds: newBounds };
         if (dragOrigPoints) {
-          changes.points = dragOrigPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+          changes.points = dragOrigPoints.map((p) => ({
+            x: p.x + dx,
+            y: p.y + dy,
+          }));
         }
         annotationState.update(selectedId, changes);
-      } else if (dragMode === 'resize') {
-        const newBounds = computeResize(dragOrigBounds, dragHandleIndex, dx, dy, e.shiftKey);
+      } else if (dragMode === "resize") {
+        const newBounds = computeResize(
+          dragOrigBounds,
+          dragHandleIndex,
+          dx,
+          dy,
+          e.shiftKey
+        );
         annotationState.update(selectedId, { bounds: newBounds });
       }
       return;
     }
 
-    if (!isDrawing || !drawStart) return;
+    if (!(isDrawing && drawStart)) {
+      return;
+    }
 
     const rect = canvasEl.getBoundingClientRect();
     const imgPos = canvasState.screenToImage(
       e.clientX - rect.left,
-      e.clientY - rect.top,
+      e.clientY - rect.top
     );
 
     drawEnd = imgPos;
 
-    if (toolState.activeTool === 'freehand') {
+    if (toolState.activeTool === "freehand") {
       freehandPoints = [...freehandPoints, imgPos];
     }
   }
@@ -488,14 +543,14 @@
       return;
     }
 
-    if (!isDrawing || !drawStart || !drawEnd) {
+    if (!(isDrawing && drawStart && drawEnd)) {
       isDrawing = false;
       return;
     }
 
     const tool = toolState.activeTool;
 
-    if (tool === 'rectangle' || tool === 'circle') {
+    if (tool === "rectangle" || tool === "circle") {
       const x = Math.min(drawStart.x, drawEnd.x);
       const y = Math.min(drawStart.y, drawEnd.y);
       const w = Math.abs(drawEnd.x - drawStart.x);
@@ -505,43 +560,53 @@
         annotationState.add({
           type: tool,
           bounds: { x, y, w, h },
-          label: toolState.activeQuickLabel ?? '',
+          label: toolState.activeQuickLabel ?? "",
           severity: toolState.activeSeverity,
           color: toolState.activeColor,
         });
       }
-    } else if (tool === 'arrow') {
+    } else if (tool === "arrow") {
       const dist = Math.hypot(drawEnd.x - drawStart.x, drawEnd.y - drawStart.y);
       if (dist > 5) {
         const x = Math.min(drawStart.x, drawEnd.x);
         const y = Math.min(drawStart.y, drawEnd.y);
         annotationState.add({
-          type: 'arrow',
-          bounds: { x, y, w: Math.abs(drawEnd.x - drawStart.x), h: Math.abs(drawEnd.y - drawStart.y) },
+          type: "arrow",
+          bounds: {
+            x,
+            y,
+            w: Math.abs(drawEnd.x - drawStart.x),
+            h: Math.abs(drawEnd.y - drawStart.y),
+          },
           points: [{ ...drawStart }, { ...drawEnd }],
-          label: toolState.activeQuickLabel ?? '',
+          label: toolState.activeQuickLabel ?? "",
           severity: toolState.activeSeverity,
           color: toolState.activeColor,
         });
       }
-    } else if (tool === 'freehand' && freehandPoints.length > 2) {
+    } else if (tool === "freehand" && freehandPoints.length > 2) {
       const xs = freehandPoints.map((p) => p.x);
       const ys = freehandPoints.map((p) => p.y);
       const minX = Math.min(...xs);
       const minY = Math.min(...ys);
       annotationState.add({
-        type: 'freehand',
-        bounds: { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY },
+        type: "freehand",
+        bounds: {
+          x: minX,
+          y: minY,
+          w: Math.max(...xs) - minX,
+          h: Math.max(...ys) - minY,
+        },
         points: [...freehandPoints],
-        label: toolState.activeQuickLabel ?? '',
+        label: toolState.activeQuickLabel ?? "",
         severity: toolState.activeSeverity,
         color: toolState.activeColor,
       });
-    } else if (tool === 'text') {
+    } else if (tool === "text") {
       annotationState.add({
-        type: 'text',
+        type: "text",
         bounds: { x: drawStart.x, y: drawStart.y, w: 100, h: 20 },
-        label: toolState.activeQuickLabel || 'Text',
+        label: toolState.activeQuickLabel || "Text",
         severity: toolState.activeSeverity,
         color: toolState.activeColor,
       });
@@ -557,7 +622,13 @@
 
   /** Compute new bounds after dragging a resize handle.
    * Handle indices: 0=TL, 1=TC, 2=TR, 3=ML, 4=MR, 5=BL, 6=BC, 7=BR */
-  function computeResize(orig: Rect, handle: number, dx: number, dy: number, lockAspect: boolean): Rect {
+  function computeResize(
+    orig: Rect,
+    handle: number,
+    dx: number,
+    dy: number,
+    lockAspect: boolean
+  ): Rect {
     let { x, y, w, h } = orig;
 
     // Which edges move
@@ -566,14 +637,28 @@
     const movesTop = handle === 0 || handle === 1 || handle === 2;
     const movesBottom = handle === 5 || handle === 6 || handle === 7;
 
-    if (movesLeft) { x += dx; w -= dx; }
-    if (movesRight) { w += dx; }
-    if (movesTop) { y += dy; h -= dy; }
-    if (movesBottom) { h += dy; }
+    if (movesLeft) {
+      x += dx;
+      w -= dx;
+    }
+    if (movesRight) {
+      w += dx;
+    }
+    if (movesTop) {
+      y += dy;
+      h -= dy;
+    }
+    if (movesBottom) {
+      h += dy;
+    }
 
     // Enforce minimum size
-    if (w < 5) { w = 5; }
-    if (h < 5) { h = 5; }
+    if (w < 5) {
+      w = 5;
+    }
+    if (h < 5) {
+      h = 5;
+    }
 
     // Aspect ratio lock with shift
     if (lockAspect && orig.w > 0 && orig.h > 0) {
@@ -599,7 +684,7 @@
 
   function handleKeyDown(e: KeyboardEvent) {
     // Undo/Redo
-    if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+    if ((e.metaKey || e.ctrlKey) && e.key === "z") {
       e.preventDefault();
       if (e.shiftKey) {
         annotationState.redo();
@@ -610,7 +695,7 @@
     }
 
     // Delete selected
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
       annotationState.remove(selectedId);
       selectedId = null;
       onselect?.(null);
@@ -618,7 +703,7 @@
     }
 
     // Reset view
-    if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+    if ((e.metaKey || e.ctrlKey) && e.key === "0") {
       e.preventDefault();
       canvasState.resetView();
       return;
@@ -626,15 +711,17 @@
 
     // Tool shortcuts (only when not in an input)
     const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+      return;
+    }
 
     const toolMap: Record<string, typeof toolState.activeTool> = {
-      v: 'select',
-      s: 'rectangle',
-      c: 'circle',
-      a: 'arrow',
-      f: 'freehand',
-      t: 'text',
+      v: "select",
+      s: "rectangle",
+      c: "circle",
+      a: "arrow",
+      f: "freehand",
+      t: "text",
     };
 
     if (toolMap[e.key] && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -644,15 +731,19 @@
 
   // Derive cursor from context
   let cursor = $derived.by(() => {
-    if (dragMode === 'move') return 'move';
-    if (dragMode === 'resize') return HANDLE_CURSORS[dragHandleIndex] ?? 'nwse-resize';
+    if (dragMode === "move") {
+      return "move";
+    }
+    if (dragMode === "resize") {
+      return HANDLE_CURSORS[dragHandleIndex] ?? "nwse-resize";
+    }
     switch (toolState.activeTool) {
-      case 'select':
-        return 'default';
-      case 'text':
-        return 'text';
+      case "select":
+        return "default";
+      case "text":
+        return "text";
       default:
-        return 'crosshair';
+        return "crosshair";
     }
   });
 </script>

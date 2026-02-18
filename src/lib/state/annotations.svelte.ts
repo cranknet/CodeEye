@@ -8,30 +8,30 @@ export type AnnotationType =
   | "text";
 export type Severity = "critical" | "minor" | "suggestion";
 
-export type Annotation = {
-  id: string;
-  type: AnnotationType;
-  number: number;
-  frame: number;
+export interface Annotation {
   bounds: Rect;
-  points?: Point[];
-  label: string;
-  comment: string;
-  severity: Severity;
   color: string;
+  comment: string;
   created_at: number;
-};
-
-type AddInput = {
-  type: AnnotationType;
-  bounds: Rect;
+  frame: number;
+  id: string;
   label: string;
-  severity: Severity;
-  frame?: number;
+  number: number;
   points?: Point[];
+  severity: Severity;
+  type: AnnotationType;
+}
+
+interface AddInput {
+  bounds: Rect;
   color?: string;
   comment?: string;
-};
+  frame?: number;
+  label: string;
+  points?: Point[];
+  severity: Severity;
+  type: AnnotationType;
+}
 
 export function createAnnotationStore() {
   let annotations = $state<Annotation[]>([]);
@@ -81,7 +81,7 @@ export function createAnnotationStore() {
 
     update(id: string, changes: Partial<Annotation>) {
       annotations = annotations.map((a) =>
-        a.id === id ? { ...a, ...changes } : a,
+        a.id === id ? { ...a, ...changes } : a
       );
       snapshot();
     },

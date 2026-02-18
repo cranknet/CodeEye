@@ -6,10 +6,10 @@ export type ToolType =
   | "freehand"
   | "text";
 
-export type QuickLabel = {
+export interface QuickLabel {
   name: string;
   severity: "critical" | "minor" | "suggestion";
-};
+}
 
 const DEFAULT_LABELS: QuickLabel[] = [
   { name: "spacing", severity: "minor" },
@@ -60,7 +60,9 @@ export function createToolStore() {
       activeQuickLabel = name;
       if (name) {
         const label = quickLabels.find((l) => l.name === name);
-        if (label) activeSeverity = label.severity;
+        if (label) {
+          activeSeverity = label.severity;
+        }
       }
     },
 
