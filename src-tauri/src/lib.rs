@@ -121,14 +121,11 @@ fn check_capture_permission() -> bool {
 
 #[tauri::command]
 fn scan_integrations() -> Vec<mcp::adapters::AdapterStatus> {
-    let binary = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "codeeye".into());
-    mcp::adapters::scan_all(&binary)
+    mcp::adapters::scan_all()
 }
 
 #[tauri::command]
-fn connect_integration(tool_name: String) -> Result<String, String> {
+fn connect_integration(tool_name: String) -> Result<(), String> {
     let binary = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "codeeye".into());
@@ -137,19 +134,17 @@ fn connect_integration(tool_name: String) -> Result<String, String> {
         .iter()
         .find(|a| a.name() == tool_name)
         .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
-    adapter.connect(&binary)?;
-    Ok(format!("{tool_name} connected"))
+    adapter.connect(&binary)
 }
 
 #[tauri::command]
-fn disconnect_integration(tool_name: String) -> Result<String, String> {
+fn disconnect_integration(tool_name: String) -> Result<(), String> {
     let adapters = mcp::adapters::all_adapters();
     let adapter = adapters
         .iter()
         .find(|a| a.name() == tool_name)
         .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
-    adapter.disconnect()?;
-    Ok(format!("{tool_name} disconnected"))
+    adapter.disconnect()
 }
 
 #[tauri::command]

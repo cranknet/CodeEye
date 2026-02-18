@@ -18,19 +18,20 @@ pub fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
     let monitors =
         xcap::Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
 
-    Ok(monitors
-        .into_iter()
-        .enumerate()
-        .map(|(i, m)| MonitorInfo {
+    let mut infos = Vec::with_capacity(monitors.len());
+    for (i, m) in monitors.iter().enumerate() {
+        infos.push(MonitorInfo {
             id: i as u32,
-            name: m.name().to_string(),
-            x: m.x(),
-            y: m.y(),
-            width: m.width(),
-            height: m.height(),
-            is_primary: m.is_primary(),
-        })
-        .collect())
+            name: m.name().unwrap_or_default(),
+            x: m.x().unwrap_or(0),
+            y: m.y().unwrap_or(0),
+            width: m.width().unwrap_or(0),
+            height: m.height().unwrap_or(0),
+            is_primary: m.is_primary().unwrap_or(false),
+        });
+    }
+
+    Ok(infos)
 }
 
 /// Capture the full screen of a specific monitor, returning PNG bytes.
@@ -126,5 +127,4 @@ mod tests {
         // Should not panic regardless of platform
         let _result = check_capture_permission();
     }
-
 }

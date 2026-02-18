@@ -14,9 +14,11 @@
     connected: boolean;
     installed: boolean;
     tool_name: string;
+    verification: string | null;
   }
 
   let integrations: AdapterStatus[] = $state([]);
+
   let connecting: string | null = $state(null);
 
   async function scanTools() {
@@ -142,13 +144,13 @@
         </div>
       </div>
     {:else}
-      <!-- Step 3: Connect tools -->
+      <!-- Step 3: Auto-detected tools -->
       <div class="space-y-3">
         <h2 class="text-sm font-medium text-white/70 text-center">
-          Connect AI tools
+          AI Tools Detected
         </h2>
         <p class="text-[10px] text-white/30 text-center">
-          One-click setup for MCP-compatible tools
+          Installed tools are auto-configured via MCP
         </p>
         <div class="space-y-1.5">
           {#each integrations as tool (tool.tool_name)}
@@ -160,7 +162,9 @@
                 style:background-color={toolDotColor(tool)}
               ></span>
               <span class="text-xs text-white/50 flex-1">{tool.tool_name}</span>
-              {#if tool.installed && !tool.connected}
+              {#if tool.connected}
+                <span class="text-[10px] text-green-500/60">Connected</span>
+              {:else if tool.installed}
                 <button
                   type="button"
                   class="px-2 py-0.5 text-[10px] text-[#0a0a0a] bg-[#f97316] rounded
@@ -170,15 +174,13 @@
                 >
                   {connecting === tool.tool_name ? "..." : "Connect"}
                 </button>
-              {:else if tool.connected}
-                <span class="text-[10px] text-green-500/60">Connected</span>
               {:else}
                 <span class="text-[10px] text-white/20">Not installed</span>
               {/if}
             </div>
           {/each}
           {#if integrations.length === 0}
-            <p class="text-[10px] text-white/20 text-center py-2">
+            <p class="text-[10px] text-white/20 text-center py-2 animate-pulse">
               Scanning...
             </p>
           {/if}

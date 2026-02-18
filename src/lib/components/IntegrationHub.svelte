@@ -12,6 +12,7 @@
     connected: boolean;
     installed: boolean;
     tool_name: string;
+    verification: string | null;
   }
 
   let integrations: AdapterStatus[] = $state([]);
@@ -29,17 +30,25 @@
     }
   }
 
-  async function toggleConnection(toolName: string, connected: boolean) {
+  async function connect(toolName: string) {
     actionInProgress = toolName;
     try {
-      if (connected) {
-        await invoke("disconnect_integration", { toolName });
-      } else {
-        await invoke("connect_integration", { toolName });
-      }
+      await invoke("connect_integration", { toolName });
       await scan();
     } catch (err) {
-      console.error("Integration toggle failed:", err);
+      console.error("Connect failed:", err);
+    } finally {
+      actionInProgress = null;
+    }
+  }
+
+  async function disconnect(toolName: string) {
+    actionInProgress = toolName;
+    try {
+      await invoke("disconnect_integration", { toolName });
+      await scan();
+    } catch (err) {
+      console.error("Disconnect failed:", err);
     } finally {
       actionInProgress = null;
     }
@@ -59,6 +68,16 @@
       return "#eab308";
     }
     return "#666";
+  }
+
+  function statusLabel(integration: AdapterStatus): string {
+    if (integration.connected) {
+      return "Connected";
+    }
+    if (integration.installed) {
+      return "Installed — not connected";
+    }
+    return "Not installed";
   }
 
   // Scan on mount
@@ -125,38 +144,37 @@
               {integration.tool_name}
             </p>
             <p class="text-[10px] text-white/25 font-mono truncate">
-              {#if integration.connected}
-                Connected
-              {:else if integration.installed}
-                Installed — not connected
-              {:else}
-                Not installed
-              {/if}
+              {statusLabel(integration)}
             </p>
+            {#if integration.config_path && integration.connected}
+              <p class="text-[9px] text-white/15 font-mono truncate mt-0.5">
+                {integration.config_path}
+              </p>
+            {/if}
           </div>
 
-          <!-- Action button -->
-          {#if integration.installed}
+          <!-- Action buttons -->
+          {#if integration.connected}
             <button
               type="button"
               class="shrink-0 px-3 py-1 text-[10px] font-mono rounded transition-colors
-                {integration.connected
-                ? 'text-white/40 bg-white/[0.04] hover:bg-white/[0.08]'
-                : 'text-[#0a0a0a] bg-[#f97316] hover:bg-[#f97316]/90'}"
+                text-white/40 bg-white/[0.04] hover:bg-red-500/20 hover:text-red-400"
               disabled={actionInProgress === integration.tool_name}
-              onclick={() =>
-                toggleConnection(
-                  integration.tool_name,
-                  integration.connected,
-                )}
+              onclick={() => disconnect(integration.tool_name)}
             >
-              {#if actionInProgress === integration.tool_name}
-                ...
-              {:else if integration.connected}
-                Disconnect
-              {:else}
-                Connect
-              {/if}
+              {actionInProgress === integration.tool_name
+                ? "..."
+                : "Disconnect"}
+            </button>
+          {:else if integration.installed}
+            <button
+              type="button"
+              class="shrink-0 px-3 py-1 text-[10px] font-mono rounded transition-colors
+                text-[#0a0a0a] bg-[#f97316] hover:bg-[#f97316]/90"
+              disabled={actionInProgress === integration.tool_name}
+              onclick={() => connect(integration.tool_name)}
+            >
+              {actionInProgress === integration.tool_name ? "..." : "Connect"}
             </button>
           {/if}
         </div>

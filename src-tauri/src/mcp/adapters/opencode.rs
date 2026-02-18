@@ -4,32 +4,34 @@ use super::{
 };
 use std::path::PathBuf;
 
-pub struct ClaudeAdapter;
+pub struct OpenCodeAdapter;
 
-impl ClaudeAdapter {
-    /// Claude Code CLI config: ~/.claude.json
+impl OpenCodeAdapter {
+    /// OpenCode config: ~/.config/opencode/opencode.json
     fn config_path_inner() -> PathBuf {
-        dirs::home_dir()
+        dirs::config_dir()
             .unwrap_or_default()
-            .join(".claude.json")
+            .join("opencode")
+            .join("opencode.json")
     }
 
+    /// OpenCode uses "command" as an array and "type": "local".
     fn mcp_entry(binary_path: &str) -> serde_json::Value {
         serde_json::json!({
-            "type": "stdio",
-            "command": binary_path,
-            "args": ["--mcp"]
+            "type": "local",
+            "command": [binary_path, "--mcp"],
+            "enabled": true
         })
     }
 }
 
-impl McpConfigAdapter for ClaudeAdapter {
+impl McpConfigAdapter for OpenCodeAdapter {
     fn name(&self) -> &str {
-        "Claude Code"
+        "OpenCode"
     }
 
     fn is_installed(&self) -> bool {
-        which_exists("claude")
+        which_exists("opencode")
     }
 
     fn config_path(&self) -> Option<PathBuf> {
@@ -40,7 +42,7 @@ impl McpConfigAdapter for ClaudeAdapter {
         let path = Self::config_path_inner();
         if let Ok(config) = read_json_config(&path) {
             config
-                .get("mcpServers")
+                .get("mcp")
                 .and_then(|s| s.get(MCP_SERVER_KEY))
                 .is_some()
         } else {
@@ -55,12 +57,12 @@ impl McpConfigAdapter for ClaudeAdapter {
         let servers = config
             .as_object_mut()
             .ok_or("Config is not an object")?
-            .entry("mcpServers")
+            .entry("mcp")
             .or_insert_with(|| serde_json::json!({}));
 
         servers
             .as_object_mut()
-            .ok_or("mcpServers is not an object")?
+            .ok_or("mcp is not an object")?
             .insert(MCP_SERVER_KEY.to_string(), Self::mcp_entry(binary_path));
 
         write_json_config(&path, &config)
@@ -70,7 +72,7 @@ impl McpConfigAdapter for ClaudeAdapter {
         let path = Self::config_path_inner();
         let mut config = read_json_config(&path)?;
 
-        if let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
+        if let Some(servers) = config.get_mut("mcp").and_then(|s| s.as_object_mut()) {
             servers.remove(MCP_SERVER_KEY);
         }
 
@@ -78,7 +80,7 @@ impl McpConfigAdapter for ClaudeAdapter {
     }
 
     fn verify(&self) -> Result<String, String> {
-        run_verify_command("claude", &["mcp", "list"])
+        run_verify_command("opencode", &["mcp", "list"])
     }
 }
 
@@ -89,7 +91,7 @@ mod tests {
     #[test]
     fn test_connect_creates_mcp_entry() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_path = tmp.path().join(".claude.json");
+        let config_path = tmp.path().join("opencode.json");
 
         std::fs::write(&config_path, "{}").unwrap();
 
@@ -97,59 +99,62 @@ mod tests {
         let servers = config
             .as_object_mut()
             .unwrap()
-            .entry("mcpServers")
+            .entry("mcp")
             .or_insert_with(|| serde_json::json!({}));
         servers
             .as_object_mut()
             .unwrap()
             .insert(
                 MCP_SERVER_KEY.to_string(),
-                ClaudeAdapter::mcp_entry("/usr/bin/codeeye"),
+                OpenCodeAdapter::mcp_entry("/usr/bin/codeeye"),
             );
         write_json_config(&config_path, &config).unwrap();
 
         let result = read_json_config(&config_path).unwrap();
-        assert_eq!(result["mcpServers"]["codeeye"]["type"], "stdio");
-        assert!(result["mcpServers"]["codeeye"]["command"]
-            .as_str()
-            .unwrap()
-            .contains("codeeye"));
-        assert_eq!(result["mcpServers"]["codeeye"]["args"][0], "--mcp");
+        assert_eq!(result["mcp"]["codeeye"]["type"], "local");
+        assert_eq!(result["mcp"]["codeeye"]["enabled"], true);
+        let cmd = result["mcp"]["codeeye"]["command"].as_array().unwrap();
+        assert_eq!(cmd[0].as_str().unwrap(), "/usr/bin/codeeye");
+        assert_eq!(cmd[1].as_str().unwrap(), "--mcp");
     }
 
     #[test]
-    fn test_disconnect_removes_mcp_entry() {
+    fn test_uses_mcp_key_not_mcp_servers() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_path = tmp.path().join(".claude.json");
+        let config_path = tmp.path().join("opencode.json");
 
-        let config = serde_json::json!({
-            "mcpServers": {
-                "codeeye": { "type": "stdio", "command": "/usr/bin/codeeye", "args": ["--mcp"] },
-                "other": { "command": "/usr/bin/other" }
-            }
-        });
-        write_json_config(&config_path, &config).unwrap();
+        std::fs::write(&config_path, "{}").unwrap();
 
         let mut config = read_json_config(&config_path).unwrap();
-        if let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
-            servers.remove(MCP_SERVER_KEY);
-        }
+        let servers = config
+            .as_object_mut()
+            .unwrap()
+            .entry("mcp")
+            .or_insert_with(|| serde_json::json!({}));
+        servers
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                MCP_SERVER_KEY.to_string(),
+                OpenCodeAdapter::mcp_entry("/usr/bin/codeeye"),
+            );
         write_json_config(&config_path, &config).unwrap();
 
         let result = read_json_config(&config_path).unwrap();
-        assert!(result["mcpServers"].get("codeeye").is_none());
-        assert!(result["mcpServers"]["other"]["command"].is_string());
+        // Must use "mcp", NOT "mcpServers"
+        assert!(result.get("mcp").is_some());
+        assert!(result.get("mcpServers").is_none());
     }
 
     #[test]
-    fn test_connect_preserves_existing_keys() {
+    fn test_connect_preserves_existing_config() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_path = tmp.path().join(".claude.json");
+        let config_path = tmp.path().join("opencode.json");
 
         let config = serde_json::json!({
-            "someOtherKey": "preserved",
-            "mcpServers": {
-                "existing": { "command": "foo" }
+            "$schema": "https://opencode.ai/config.json",
+            "mcp": {
+                "existing": { "type": "local", "command": ["foo"] }
             }
         });
         write_json_config(&config_path, &config).unwrap();
@@ -158,20 +163,20 @@ mod tests {
         let servers = config
             .as_object_mut()
             .unwrap()
-            .entry("mcpServers")
+            .entry("mcp")
             .or_insert_with(|| serde_json::json!({}));
         servers
             .as_object_mut()
             .unwrap()
             .insert(
                 MCP_SERVER_KEY.to_string(),
-                ClaudeAdapter::mcp_entry("/usr/bin/codeeye"),
+                OpenCodeAdapter::mcp_entry("/usr/bin/codeeye"),
             );
         write_json_config(&config_path, &config).unwrap();
 
         let result = read_json_config(&config_path).unwrap();
-        assert_eq!(result["someOtherKey"], "preserved");
-        assert!(result["mcpServers"]["existing"]["command"].is_string());
-        assert_eq!(result["mcpServers"]["codeeye"]["type"], "stdio");
+        assert_eq!(result["$schema"], "https://opencode.ai/config.json");
+        assert!(result["mcp"]["existing"]["command"].is_array());
+        assert!(result["mcp"]["codeeye"]["command"].is_array());
     }
 }
