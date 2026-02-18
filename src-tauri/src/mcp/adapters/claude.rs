@@ -6,12 +6,14 @@ use std::path::PathBuf;
 pub struct ClaudeAdapter;
 
 impl ClaudeAdapter {
-    /// Claude Desktop config: ~/.claude/claude_desktop_config.json
-    /// Claude Code (CLAUDE.md): different path pattern
+    /// Claude Desktop config path (platform-specific):
+    /// - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+    /// - Linux: ~/.config/Claude/claude_desktop_config.json
+    /// - Windows: %APPDATA%/Claude/claude_desktop_config.json
     fn desktop_config_path() -> PathBuf {
-        dirs::home_dir()
+        dirs::config_dir()
             .unwrap_or_default()
-            .join(".claude")
+            .join("Claude")
             .join("claude_desktop_config.json")
     }
 }
@@ -22,10 +24,10 @@ impl McpConfigAdapter for ClaudeAdapter {
     }
 
     fn is_installed(&self) -> bool {
-        // Check for claude CLI or claude desktop config directory
-        let config_dir = dirs::home_dir()
+        // Check for Claude Desktop config directory
+        let config_dir = dirs::config_dir()
             .unwrap_or_default()
-            .join(".claude");
+            .join("Claude");
         config_dir.exists()
     }
 

@@ -39,6 +39,30 @@ fn delete_session_by_id(session_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn load_app_config() -> Result<storage::AppConfig, String> {
+    let base = storage::default_base_path();
+    storage::load_config(&base)
+}
+
+#[tauri::command]
+fn save_app_config(config: storage::AppConfig) -> Result<(), String> {
+    let base = storage::default_base_path();
+    storage::save_config(&base, &config)
+}
+
+#[tauri::command]
+fn load_session_meta(session_id: String) -> Result<serde_json::Value, String> {
+    let base = storage::default_base_path();
+    storage::load_session_meta(&base, &session_id)
+}
+
+#[tauri::command]
+fn save_session_meta(session_id: String, meta: serde_json::Value) -> Result<(), String> {
+    let base = storage::default_base_path();
+    storage::save_session_meta(&base, &session_id, &meta)
+}
+
+#[tauri::command]
 fn list_monitors() -> Result<Vec<capture::MonitorInfo>, String> {
     capture::list_monitors()
 }
@@ -130,6 +154,10 @@ pub fn run() {
             create_new_session,
             list_all_sessions,
             delete_session_by_id,
+            load_app_config,
+            save_app_config,
+            load_session_meta,
+            save_session_meta,
             list_monitors,
             capture_screen,
             capture_region,

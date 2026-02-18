@@ -79,12 +79,65 @@ export function createSessionStore() {
     }, 500);
   }
 
-  /** Persist session metadata */
-  function save(_meta: Partial<SessionMeta>) {
+  /** Persist session metadata to Rust backend */
+  async function save(meta: Partial<SessionMeta>) {
     if (!currentSessionId) {
       return;
     }
-    // TODO: invoke("save_session_meta", { sessionId: currentSessionId, meta })
+    try {
+      const existing = await invoke<Record<string, unknown>>(
+        "load_session_meta",
+        { sessionId: currentSessionId }
+      );
+
+      if (meta.annotations !== undefined) {
+        existing.annotations = meta.annotations;
+        existing.annotation_count = meta.annotations.length;
+      }
+      if (meta.generalNotes !== undefined) {
+        existing.general_notes = meta.generalNotes;
+      }
+      if (meta.pageName !== undefined) {
+        existing.page_name = meta.pageName;
+      }
+      if (meta.status !== undefined) {
+        existing.status = meta.status;
+      }
+      if (meta.viewport !== undefined) {
+        existing.viewport = meta.viewport;
+      }
+      existing.updated_at = Date.now();
+
+      await invoke("save_session_meta", {
+        sessionId: currentSessionId,
+        meta: existing,
+      });
+    } catch (err) {
+      console.error("Failed to save session:", err);
+    }
+  }
+
+  /** Load full session data from Rust backend */
+  async function loadSession(sessionId: string): Promise<SessionMeta | null> {
+    try {
+      const meta = await invoke<Record<string, unknown>>("load_session_meta", {
+        sessionId,
+      });
+      return {
+        id: sessionId,
+        pageName: (meta.page_name as string) ?? "",
+        generalNotes: (meta.general_notes as string) ?? "",
+        annotations: (meta.annotations as Annotation[]) ?? [],
+        status: (meta.status as "open" | "resolved") ?? "open",
+        createdAt: (meta.created_at as number) ?? 0,
+        updatedAt: (meta.updated_at as number) ?? 0,
+        gitContext: meta.git as SessionMeta["gitContext"],
+        viewport: meta.viewport as SessionMeta["viewport"],
+      };
+    } catch (err) {
+      console.error("Failed to load session:", err);
+      return null;
+    }
   }
 
   /** Delete a session */
@@ -109,6 +162,7 @@ export function createSessionStore() {
     },
 
     loadSessions,
+    loadSession,
     createSession,
     deleteSession,
     scheduleSave,

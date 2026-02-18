@@ -9,18 +9,23 @@
   import SessionList from "$lib/components/SessionList.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
+  import Toast from "$lib/components/Toast.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { createAnnotationStore } from "$lib/state/annotations.svelte";
   import { createCanvasStore } from "$lib/state/canvas.svelte";
   import { createSessionStore } from "$lib/state/sessions.svelte";
+  import { createToastStore } from "$lib/state/toast.svelte";
   import { createToolStore } from "$lib/state/tools.svelte";
   import { generatePrompt } from "$lib/utils/export";
+  import { createShortcutRegistry } from "$lib/utils/shortcuts";
 
   // App-level stores — single source of truth
   const canvasState = createCanvasStore();
   const annotationState = createAnnotationStore();
   const toolState = createToolStore();
   const sessionState = createSessionStore();
+  const toastState = createToastStore();
+  const shortcuts = createShortcutRegistry();
 
   // Session metadata
   let pageName = $state("");
@@ -106,15 +111,34 @@
   }
 
   /** Restore a session by ID */
-  function handleSessionRestore(sessionId: string) {
+  async function handleSessionRestore(sessionId: string) {
     showSessionList = false;
     sessionState.setCurrentSession(sessionId);
-    // TODO: Load session data (annotations, image, metadata) from Rust backend
+
+    const session = await sessionState.loadSession(sessionId);
+    if (session) {
+      pageName = session.pageName;
+      generalNotes = session.generalNotes;
+      annotationState.clear();
+      for (const a of session.annotations) {
+        annotationState.add(a);
+      }
+      toastState.success(`Loaded "${session.pageName || "session"}"`);
+    } else {
+      toastState.error("Failed to load session");
+    }
   }
 
-  /** Handle first-run completion */
-  function handleFirstRunComplete() {
+  /** Handle first-run completion — persist to config */
+  async function handleFirstRunComplete() {
     showFirstRun = false;
+    try {
+      const config = await invoke<Record<string, unknown>>("load_app_config");
+      config.first_run_complete = true;
+      await invoke("save_app_config", { config });
+    } catch (err) {
+      console.error("Failed to save first-run state:", err);
+    }
   }
 
   /** Load an image from a data URL or blob URL */
@@ -169,11 +193,55 @@
 
   let isDragOver = $state(false);
 
-  // Load sessions on mount
-  sessionState.loadSessions();
+  // Register keyboard shortcuts
+  shortcuts.register({
+    key: "n",
+    ctrl: true,
+    description: "New capture",
+    action: startCapture,
+  });
+  shortcuts.register({
+    key: "z",
+    ctrl: true,
+    description: "Undo",
+    action: () => annotationState.undo(),
+  });
+  shortcuts.register({
+    key: "z",
+    ctrl: true,
+    shift: true,
+    description: "Redo",
+    action: () => annotationState.redo(),
+  });
+  shortcuts.register({
+    key: ",",
+    ctrl: true,
+    description: "Open settings",
+    action: () => {
+      showSettings = true;
+    },
+  });
+
+  // Check first-run config and load sessions on mount
+  async function initApp() {
+    try {
+      const config = await invoke<{ first_run_complete: boolean }>(
+        "load_app_config"
+      );
+      if (!config.first_run_complete) {
+        showFirstRun = true;
+      }
+    } catch {
+      // Config not found or unreadable — show first run
+      showFirstRun = true;
+    }
+    sessionState.loadSessions();
+  }
+
+  initApp();
 </script>
 
-<svelte:window onpaste={handlePaste} />
+<svelte:window onpaste={handlePaste} onkeydown={shortcuts.handleKeyDown} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <main
@@ -332,3 +400,6 @@
     oncancel={handleOverlayCancel}
   />
 {/if}
+
+<!-- Toast notifications -->
+<Toast {toastState} />

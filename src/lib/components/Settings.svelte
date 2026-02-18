@@ -26,6 +26,7 @@
 
   let saving = $state(false);
   let saveMessage: string | null = $state(null);
+  let uninstalling = $state(false);
 
   const sections: { id: Section; label: string }[] = [
     { id: "general", label: "General" },
@@ -46,6 +47,65 @@
       saveMessage = null;
     }, 2000);
   }
+
+  /** Load settings from config.json on mount */
+  async function loadConfig() {
+    try {
+      const config = await invoke<Record<string, unknown>>("load_app_config");
+      theme = (config.theme as string) ?? "dark";
+      globalShortcut =
+        (config.global_shortcut as string) ?? "CmdOrCtrl+Shift+E";
+      captureSoundEnabled = (config.capture_sound as boolean) ?? false;
+      sessionLimit = (config.session_limit as number) ?? 200;
+      retentionDays = (config.session_retention_days as number) ?? 30;
+      gitDiffInPrompt = (config.git_diff_in_prompt as boolean) ?? true;
+      promptPreview = (config.prompt_preview as boolean) ?? true;
+      compressionMaxRes = (config.compression_max_resolution as number) ?? 1920;
+      compressionQuality = (config.compression_quality as number) ?? 85;
+      logLevel = (config.log_level as string) ?? "info";
+    } catch (err) {
+      console.error("Failed to load config:", err);
+    }
+  }
+
+  /** Save all settings to config.json */
+  async function saveConfig() {
+    saving = true;
+    try {
+      const config = await invoke<Record<string, unknown>>("load_app_config");
+      config.theme = theme;
+      config.global_shortcut = globalShortcut;
+      config.capture_sound = captureSoundEnabled;
+      config.session_limit = sessionLimit;
+      config.session_retention_days = retentionDays;
+      config.git_diff_in_prompt = gitDiffInPrompt;
+      config.prompt_preview = promptPreview;
+      config.compression_max_resolution = compressionMaxRes;
+      config.compression_quality = compressionQuality;
+      config.log_level = logLevel;
+      await invoke("save_app_config", { config });
+      showSaveMessage("Settings saved");
+    } catch (err) {
+      console.error("Failed to save config:", err);
+      showSaveMessage("Failed to save");
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function handleUninstall() {
+    uninstalling = true;
+    try {
+      const result = await invoke<string>("run_uninstall", { backup: true });
+      showSaveMessage(result);
+    } catch (err) {
+      showSaveMessage(`Uninstall failed: ${err}`);
+    } finally {
+      uninstalling = false;
+    }
+  }
+
+  loadConfig();
 </script>
 
 <svelte:window onkeydown={handleKeyDown} />
@@ -277,12 +337,11 @@
           <button
             type="button"
             class="px-3 py-1.5 text-[11px] text-red-400/60 border border-red-500/20
-              rounded hover:bg-red-500/10 transition-colors"
-            onclick={() => {
-              /* TODO: uninstall flow */
-            }}
+              rounded hover:bg-red-500/10 transition-colors disabled:opacity-30"
+            disabled={uninstalling}
+            onclick={handleUninstall}
           >
-            Uninstall CodeEye
+            {uninstalling ? "Uninstalling..." : "Uninstall CodeEye"}
           </button>
           <p class="text-[9px] text-white/15">
             Removes all data, disconnects tools, and cleans up
@@ -293,9 +352,22 @@
   </div>
 
   <!-- Footer -->
-  {#if saveMessage}
-    <div class="px-4 py-1.5 border-t border-white/[0.06] shrink-0">
+  <div
+    class="flex items-center justify-between px-4 py-2 border-t border-white/[0.06] shrink-0"
+  >
+    {#if saveMessage}
       <span class="text-[10px] font-mono text-[#f97316]">{saveMessage}</span>
-    </div>
-  {/if}
+    {:else}
+      <span></span>
+    {/if}
+    <button
+      type="button"
+      class="px-4 py-1.5 text-xs font-medium text-[#0a0a0a] bg-[#f97316]
+        hover:bg-[#f97316]/90 rounded transition-colors disabled:opacity-50"
+      disabled={saving}
+      onclick={saveConfig}
+    >
+      {saving ? "Saving..." : "Save"}
+    </button>
+  </div>
 </div>

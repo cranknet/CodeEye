@@ -55,6 +55,10 @@ pub fn list_tools() -> Vec<ToolDefinition> {
                     "session_id": {
                         "type": "string",
                         "description": "The session ID to mark as resolved."
+                    },
+                    "resolution_note": {
+                        "type": "string",
+                        "description": "Optional note describing what was fixed."
                     }
                 },
                 "required": ["session_id"],
@@ -177,6 +181,10 @@ fn resolve_ui_feedback(
 
     meta["status"] = json!("resolved");
     meta["updated_at"] = json!(chrono::Utc::now().timestamp_millis());
+
+    if let Some(note) = args.get("resolution_note").and_then(|v| v.as_str()) {
+        meta["resolution_note"] = json!(note);
+    }
 
     fs::write(
         &meta_path,

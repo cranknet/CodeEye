@@ -108,6 +108,41 @@ pub fn load_config(base_path: &Path) -> Result<AppConfig, String> {
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse config: {}", e))
 }
 
+/// Save config to disk.
+pub fn save_config(base_path: &Path, config: &AppConfig) -> Result<(), String> {
+    let path = base_path.join("config.json");
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to write config: {}", e))
+}
+
+/// Load full session metadata from a session directory.
+pub fn load_session_meta(base_path: &Path, session_id: &str) -> Result<serde_json::Value, String> {
+    let meta_path = base_path
+        .join("sessions")
+        .join(session_id)
+        .join("meta.json");
+    let data =
+        fs::read_to_string(&meta_path).map_err(|e| format!("Failed to read meta: {}", e))?;
+    serde_json::from_str(&data).map_err(|e| format!("Failed to parse meta: {}", e))
+}
+
+/// Save session metadata to a session directory.
+pub fn save_session_meta(
+    base_path: &Path,
+    session_id: &str,
+    meta: &serde_json::Value,
+) -> Result<(), String> {
+    let session_dir = base_path.join("sessions").join(session_id);
+    if !session_dir.exists() {
+        return Err(format!("Session not found: {session_id}"));
+    }
+    let meta_path = session_dir.join("meta.json");
+    let json = serde_json::to_string_pretty(meta)
+        .map_err(|e| format!("Failed to serialize meta: {}", e))?;
+    fs::write(&meta_path, json).map_err(|e| format!("Failed to write meta: {}", e))
+}
+
 /// Returns the default storage base path: `~/.codeeye/`
 pub fn default_base_path() -> PathBuf {
     dirs::home_dir()
