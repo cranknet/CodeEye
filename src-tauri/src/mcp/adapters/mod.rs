@@ -42,6 +42,49 @@ pub trait McpConfigAdapter {
         Err("Verification not available for this tool".into())
     }
 
+    /// Path to the config backup file (e.g. `.json.bak` or `.toml.bak`).
+    /// Returns `None` if no backup exists. Uses `derive_backup_path` for consistency
+    /// with the write helpers that create backups.
+    fn backup_path(&self) -> Option<PathBuf> {
+        let config = self.config_path()?;
+        let backup = derive_backup_path(&config);
+        if backup.exists() {
+            Some(backup)
+        } else {
+            None
+        }
+    }
+
+    /// Restore the config backup, overwriting the current config.
+    fn restore_backup(&self) -> Result<(), String> {
+        let config = self
+            .config_path()
+            .ok_or("No config path for this tool")?;
+        let backup = self
+            .backup_path()
+            .ok_or("No backup file found")?;
+        std::fs::copy(&backup, &config)
+            .map_err(|e| format!("Failed to restore backup: {e}"))?;
+        Ok(())
+    }
+
+    /// Full uninstall: disconnect CodeEye + remove the backup file.
+    fn uninstall(&self) -> Result<(), String> {
+        if self.is_connected() {
+            self.disconnect()?;
+        }
+        if let Some(backup) = self.backup_path() {
+            std::fs::remove_file(&backup)
+                .map_err(|e| format!("Failed to remove backup: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Read the current CodeEye MCP entry as a formatted string.
+    fn read_entry(&self) -> Result<String, String> {
+        Err("Not available for this tool".into())
+    }
+
     /// Return full status (fast — no shell commands).
     fn status(&self) -> AdapterStatus {
         AdapterStatus {
@@ -119,13 +162,23 @@ pub fn read_json_config(path: &std::path::Path) -> Result<serde_json::Value, Str
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse config: {e}"))
 }
 
+/// Derive the backup path for a config file (e.g. `config.json` → `config.json.bak`).
+/// Used by both the `McpConfigAdapter` trait and the write helpers to ensure consistency.
+pub fn derive_backup_path(config_path: &std::path::Path) -> PathBuf {
+    let ext = config_path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy();
+    config_path.with_extension(format!("{ext}.bak"))
+}
+
 /// Write JSON config with backup.
 pub fn write_json_config(
     path: &std::path::Path,
     value: &serde_json::Value,
 ) -> Result<(), String> {
     if path.exists() {
-        let backup = path.with_extension("json.bak");
+        let backup = derive_backup_path(path);
         std::fs::copy(path, &backup)
             .map_err(|e| format!("Failed to backup config: {e}"))?;
     }
@@ -162,7 +215,7 @@ pub fn write_toml_config(
     value: &toml::Value,
 ) -> Result<(), String> {
     if path.exists() {
-        let backup = path.with_extension("toml.bak");
+        let backup = derive_backup_path(path);
         std::fs::copy(path, &backup)
             .map_err(|e| format!("Failed to backup config: {e}"))?;
     }

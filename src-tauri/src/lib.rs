@@ -95,6 +95,7 @@ fn save_session_capture(session_id: String, image_base64: String) -> Result<(), 
         &data,
         config.compression_max_resolution,
         config.compression_quality,
+        &config.compression_format,
     )?;
     Ok(())
 }
@@ -148,6 +149,120 @@ fn disconnect_integration(tool_name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn verify_integration(tool_name: String) -> Result<String, String> {
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    adapter.verify()
+}
+
+#[tauri::command]
+fn read_mcp_entry(tool_name: String) -> Result<String, String> {
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    adapter.read_entry()
+}
+
+#[tauri::command]
+fn get_backup_path(tool_name: String) -> Result<Option<String>, String> {
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    Ok(adapter.backup_path().map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+fn restore_config_backup(tool_name: String) -> Result<(), String> {
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    adapter.restore_backup()
+}
+
+#[tauri::command]
+fn uninstall_mcp(tool_name: String) -> Result<(), String> {
+    let adapters = mcp::adapters::all_adapters();
+    let adapter = adapters
+        .iter()
+        .find(|a| a.name() == tool_name)
+        .ok_or_else(|| format!("Unknown tool: {tool_name}"))?;
+    adapter.uninstall()
+}
+
+#[tauri::command]
+fn load_session_image(session_id: String) -> Result<String, String> {
+    let base = storage::default_base_path();
+    storage::load_session_image(&base, &session_id)
+}
+
+#[tauri::command]
+fn save_annotated_image(session_id: String, image_base64: String) -> Result<(), String> {
+    let base = storage::default_base_path();
+    storage::save_annotated_image(&base, &session_id, &image_base64)
+}
+
+#[tauri::command]
+fn save_session_prompt(session_id: String, prompt: String) -> Result<(), String> {
+    let base = storage::default_base_path();
+    storage::save_session_prompt(&base, &session_id, &prompt)
+}
+
+/// Export a diagnostic bundle to the specified path.
+/// The frontend should use a save dialog to choose the path.
+#[tauri::command]
+fn export_diagnostic_bundle(save_path: String) -> Result<String, String> {
+    let base = storage::default_base_path();
+    let config = storage::load_config(&base).unwrap_or_default();
+
+    let config_json = serde_json::to_value(&config)
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+
+    let sessions = storage::list_sessions(&base).unwrap_or_default();
+
+    // Read tail of most recent log file (last 10 KB)
+    let log_dir = base.join("logs");
+    let mut recent_logs = String::new();
+    if log_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&log_dir) {
+            let mut files: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+            files.sort_by_key(|e| e.file_name());
+            if let Some(last) = files.last() {
+                if let Ok(content) = std::fs::read_to_string(last.path()) {
+                    let start = content.len().saturating_sub(10_000);
+                    recent_logs = content[start..].to_string();
+                }
+            }
+        }
+    }
+
+    let bundle = serde_json::json!({
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "config": config_json,
+        "session_count": sessions.len(),
+        "recent_logs": recent_logs,
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    let path = std::path::Path::new(&save_path);
+    let content =
+        serde_json::to_string_pretty(&bundle).map_err(|e| format!("Failed to format: {e}"))?;
+    std::fs::write(path, &content).map_err(|e| format!("Failed to write: {e}"))?;
+
+    Ok(save_path)
+}
+
+#[tauri::command]
 fn run_uninstall(backup: bool) -> Result<String, String> {
     uninstall::run_uninstall(backup)
 }
@@ -181,9 +296,18 @@ pub fn run() {
             capture_region,
             save_session_capture,
             check_capture_permission,
+            load_session_image,
+            save_annotated_image,
+            save_session_prompt,
             scan_integrations,
             connect_integration,
             disconnect_integration,
+            verify_integration,
+            read_mcp_entry,
+            get_backup_path,
+            restore_config_backup,
+            uninstall_mcp,
+            export_diagnostic_bundle,
             run_uninstall,
         ])
         .setup(|app| {
@@ -196,7 +320,7 @@ pub fn run() {
             let capture_item = MenuItem::with_id(
                 app,
                 "capture",
-                &format!("New Capture  {shortcut_label}"),
+                format!("New Capture  {shortcut_label}"),
                 true,
                 None::<&str>,
             )?;

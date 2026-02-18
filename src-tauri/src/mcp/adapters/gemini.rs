@@ -81,6 +81,15 @@ impl McpConfigAdapter for GeminiAdapter {
         // We can't automate it, so return guidance instead.
         Ok("Config written. Run `gemini` then type `/mcp` to verify.".into())
     }
+
+    fn read_entry(&self) -> Result<String, String> {
+        let config = read_json_config(&Self::config_path_inner())?;
+        let entry = config
+            .get("mcpServers")
+            .and_then(|s| s.get(MCP_SERVER_KEY))
+            .ok_or("CodeEye entry not found in config")?;
+        serde_json::to_string_pretty(entry).map_err(|e| format!("Failed to format entry: {e}"))
+    }
 }
 
 #[cfg(test)]

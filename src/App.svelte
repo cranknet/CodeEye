@@ -19,8 +19,10 @@
   import { createSessionStore } from "$lib/state/sessions.svelte";
   import { createToastStore } from "$lib/state/toast.svelte";
   import { createToolStore } from "$lib/state/tools.svelte";
-  import { generatePrompt } from "$lib/utils/export";
+  import { type GitContext, generatePrompt } from "$lib/utils/export";
   import { createShortcutRegistry } from "$lib/utils/shortcuts";
+
+  const DATA_URL_PREFIX_RE = /^data:image\/\w+;base64,/;
 
   // App-level stores — single source of truth
   const canvasState = createCanvasStore();
@@ -33,6 +35,7 @@
   // Session metadata
   let pageName = $state("");
   let generalNotes = $state("");
+  let gitContext: GitContext | undefined = $state(undefined);
 
   // Shared selection state (canvas ↔ sidebar)
   let selectedId: string | null = $state(null);
@@ -90,6 +93,7 @@
     generatePrompt({
       pageName,
       generalNotes,
+      gitContext,
       annotations: annotationState.annotations,
       viewport:
         canvasState.imageWidth > 0
@@ -101,6 +105,7 @@
   /**
    * Capture the full primary monitor.
    * Hides the window first so the app UI doesn't appear in the screenshot.
+   * Creates a session on first capture and saves the original image.
    */
   async function startCapture() {
     if (isCapturing) {
@@ -114,10 +119,44 @@
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       const base64: string = await invoke("capture_screen", { monitorId: 0 });
       const dataUrl = `data:image/png;base64,${base64}`;
-      if (canvasState.frameCount > 0) {
-        addFrame(dataUrl);
-      } else {
+
+      const isNewSession = canvasState.frameCount === 0;
+      if (isNewSession) {
         loadImage(dataUrl);
+      } else {
+        addFrame(dataUrl);
+      }
+
+      // Create session on first capture — suppress auto-save during setup
+      if (isNewSession) {
+        sessionState.autoSaveEnabled = false;
+        try {
+          sessionState.setCurrentSession(null);
+          gitContext = undefined;
+
+          const sessionId = await sessionState.createSession(
+            pageName || "Untitled",
+            ""
+          );
+          if (sessionId) {
+            await invoke("save_session_capture", {
+              sessionId,
+              imageBase64: base64,
+            });
+          }
+
+          // Detect git context (best-effort — fails silently outside git repos)
+          try {
+            const ctx = await invoke<GitContext>("get_git_context", {
+              path: ".",
+            });
+            gitContext = ctx;
+          } catch {
+            // Not in a git repo
+          }
+        } finally {
+          sessionState.autoSaveEnabled = true;
+        }
       }
     } catch (err) {
       console.error("Capture failed:", err);
@@ -163,18 +202,37 @@
   /** Restore a session by ID */
   async function handleSessionRestore(sessionId: string) {
     showSessionList = false;
-    sessionState.setCurrentSession(sessionId);
-    const session = await sessionState.loadSession(sessionId);
-    if (session) {
-      pageName = session.pageName;
-      generalNotes = session.generalNotes;
-      annotationState.clear();
-      for (const a of session.annotations) {
-        annotationState.add(a);
+
+    // Suppress auto-save during restore to avoid writing stale intermediate state
+    sessionState.autoSaveEnabled = false;
+    try {
+      sessionState.setCurrentSession(sessionId);
+      const session = await sessionState.loadSession(sessionId);
+      if (session) {
+        pageName = session.pageName;
+        generalNotes = session.generalNotes;
+        gitContext = session.gitContext;
+        annotationState.clear();
+        for (const a of session.annotations) {
+          annotationState.add(a);
+        }
+
+        // Load the session screenshot into the canvas
+        try {
+          const base64 = await invoke<string>("load_session_image", {
+            sessionId,
+          });
+          loadImage(`data:image/png;base64,${base64}`);
+        } catch {
+          // No image available — session may have been created without a capture
+        }
+
+        toastState.success(`Loaded "${session.pageName || "session"}"`);
+      } else {
+        toastState.error("Failed to load session");
       }
-      toastState.success(`Loaded "${session.pageName || "session"}"`);
-    } else {
-      toastState.error("Failed to load session");
+    } finally {
+      sessionState.autoSaveEnabled = true;
     }
   }
 
@@ -297,6 +355,80 @@
       showFirstRun = true;
     }
     sessionState.loadSessions();
+  }
+
+  // Auto-save session when annotations or metadata change
+  $effect(() => {
+    if (!(sessionState.currentSessionId && sessionState.autoSaveEnabled)) {
+      return;
+    }
+
+    const data = {
+      annotations: annotationState.annotations,
+      pageName,
+      generalNotes,
+      viewport:
+        canvasState.imageWidth > 0
+          ? { width: canvasState.imageWidth, height: canvasState.imageHeight }
+          : undefined,
+    };
+
+    sessionState.scheduleSave(data);
+  });
+
+  /**
+   * Submit feedback: save prompt + annotated image to disk, copy to clipboard.
+   * This makes the session available to AI tools via MCP.
+   */
+  async function handleSubmitFeedback() {
+    const sessionId = sessionState.currentSessionId;
+    if (!sessionId) {
+      toastState.error("No active session — capture a screenshot first");
+      return;
+    }
+
+    try {
+      // Save prompt markdown
+      await invoke("save_session_prompt", {
+        sessionId,
+        prompt: promptMarkdown,
+      });
+
+      // Save annotated image from canvas
+      const dataUrl = canvasState.exportToDataUrl();
+      if (dataUrl) {
+        const imageBase64 = dataUrl.replace(DATA_URL_PREFIX_RE, "");
+        await invoke("save_annotated_image", { sessionId, imageBase64 });
+      }
+
+      // Flush any pending auto-save, then save final state synchronously
+      await sessionState.flushSave();
+      sessionState.scheduleSave({
+        annotations: annotationState.annotations,
+        pageName,
+        generalNotes,
+        gitContext,
+        viewport:
+          canvasState.imageWidth > 0
+            ? {
+                width: canvasState.imageWidth,
+                height: canvasState.imageHeight,
+              }
+            : undefined,
+      });
+      await sessionState.flushSave();
+
+      // Copy prompt to clipboard
+      const { writeText } = await import(
+        "@tauri-apps/plugin-clipboard-manager"
+      );
+      await writeText(promptMarkdown);
+
+      toastState.success("Feedback saved — prompt copied to clipboard");
+    } catch (err) {
+      console.error("Submit failed:", err);
+      toastState.error("Failed to submit feedback");
+    }
   }
 
   // Listen for Tauri backend events
@@ -523,6 +655,7 @@
       onshowpreview={() => {
         showPromptPreview = true;
       }}
+      onsubmit={handleSubmitFeedback}
     />
   {/if}
 </main>

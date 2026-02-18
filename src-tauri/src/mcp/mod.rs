@@ -2,7 +2,7 @@ pub mod adapters;
 pub mod protocol;
 pub mod tools;
 
-use protocol::{JsonRpcRequest, JsonRpcResponse};
+use protocol::{JsonRpcRequest, JsonRpcResponse, ToolContent};
 use serde_json::json;
 use std::io::{self, BufRead, Write};
 
@@ -12,13 +12,18 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// Run the MCP stdio server. Blocks until stdin is closed.
 pub fn run_server() {
+    eprintln!("[codeeye-mcp] Starting server v{SERVER_VERSION}");
+
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
     for line in stdin.lock().lines() {
         let line = match line {
             Ok(l) => l,
-            Err(_) => break,
+            Err(e) => {
+                eprintln!("[codeeye-mcp] stdin read error: {e}");
+                break;
+            }
         };
 
         let trimmed = line.trim();
@@ -29,6 +34,7 @@ pub fn run_server() {
         let request: JsonRpcRequest = match serde_json::from_str(trimmed) {
             Ok(r) => r,
             Err(e) => {
+                eprintln!("[codeeye-mcp] Parse error: {e}");
                 let err =
                     JsonRpcResponse::error(None, -32700, format!("Parse error: {e}"));
                 write_response(&mut stdout, &err);
@@ -38,13 +44,16 @@ pub fn run_server() {
 
         // Notifications (no id) don't get responses
         if request.id.is_none() {
-            // Acknowledged — no response needed for notifications
+            eprintln!("[codeeye-mcp] Notification: {}", request.method);
             continue;
         }
 
+        eprintln!("[codeeye-mcp] Request: {} (id: {:?})", request.method, request.id);
         let response = handle_request(&request);
         write_response(&mut stdout, &response);
     }
+
+    eprintln!("[codeeye-mcp] Server shutting down");
 }
 
 fn handle_request(req: &JsonRpcRequest) -> JsonRpcResponse {
@@ -107,16 +116,19 @@ fn handle_tools_call(req: &JsonRpcRequest) -> JsonRpcResponse {
                 "isError": false
             }),
         ),
-        Err(e) => JsonRpcResponse::success(
-            req.id.clone(),
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("Error: {e}")
-                }],
-                "isError": true
-            }),
-        ),
+        Err(e) => {
+            eprintln!("[codeeye-mcp] Tool error ({name}): {e}");
+            let content = vec![ToolContent::Text {
+                text: format!("Error: {e}"),
+            }];
+            JsonRpcResponse::success(
+                req.id.clone(),
+                json!({
+                    "content": content,
+                    "isError": true
+                }),
+            )
+        }
     }
 }
 

@@ -2,7 +2,32 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Default prompt template with mustache-style variables.
+/// SYNC: Keep in sync with `src/lib/utils/export.ts:DEFAULT_PROMPT_TEMPLATE`.
+pub const DEFAULT_PROMPT_TEMPLATE: &str = r#"# UI Feedback Report
+
+**Page:** {{page_name}}
+**Project:** {{project}}
+**Branch:** {{branch}}
+**File:** {{suggested_file}}
+**Viewport:** {{viewport}}
+
+## Notes
+
+{{notes}}
+
+## Issues
+
+{{annotations}}
+
+## Recent Changes
+
+```diff
+{{recent_diff}}
+```"#;
+
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     pub version: u32,
     pub first_run_complete: bool,
@@ -19,6 +44,12 @@ pub struct AppConfig {
     pub compression_format: String,
     pub compression_quality: u8,
     pub log_level: String,
+    // MCP payload settings
+    pub mcp_include_prompt: bool,
+    pub mcp_include_image: bool,
+    pub mcp_include_metadata: bool,
+    pub mcp_image_max_resolution: u32,
+    pub mcp_prompt_template: String,
 }
 
 impl Default for AppConfig {
@@ -39,6 +70,11 @@ impl Default for AppConfig {
             compression_format: "png".into(),
             compression_quality: 85,
             log_level: "info".into(),
+            mcp_include_prompt: true,
+            mcp_include_image: true,
+            mcp_include_metadata: false,
+            mcp_image_max_resolution: 1280,
+            mcp_prompt_template: DEFAULT_PROMPT_TEMPLATE.into(),
         }
     }
 }
@@ -219,6 +255,70 @@ pub fn list_sessions(base_path: &Path) -> Result<Vec<SessionSummary>, String> {
     Ok(index.sessions)
 }
 
+/// Load the best available image for a session as base64 PNG.
+/// Prefers: compressed > annotated > original.
+pub fn load_session_image(base_path: &Path, session_id: &str) -> Result<String, String> {
+    let session_dir = base_path.join("sessions").join(session_id);
+    if !session_dir.exists() {
+        return Err(format!("Session not found: {session_id}"));
+    }
+
+    let candidates = [
+        "compressed.webp",
+        "compressed.png",
+        "annotated.png",
+        "original.png",
+    ];
+    for name in &candidates {
+        let path = session_dir.join(name);
+        if path.exists() {
+            let bytes =
+                fs::read(&path).map_err(|e| format!("Failed to read {name}: {e}"))?;
+            return Ok(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                &bytes,
+            ));
+        }
+    }
+
+    Err(format!("No image found for session: {session_id}"))
+}
+
+/// Save an annotated screenshot as `annotated.png` in the session directory.
+pub fn save_annotated_image(
+    base_path: &Path,
+    session_id: &str,
+    image_base64: &str,
+) -> Result<(), String> {
+    use base64::Engine;
+    let session_dir = base_path.join("sessions").join(session_id);
+    if !session_dir.exists() {
+        return Err(format!("Session not found: {session_id}"));
+    }
+
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(image_base64)
+        .map_err(|e| format!("Failed to decode image: {e}"))?;
+
+    fs::write(session_dir.join("annotated.png"), &data)
+        .map_err(|e| format!("Failed to write annotated.png: {e}"))
+}
+
+/// Save the generated prompt markdown to the session directory.
+pub fn save_session_prompt(
+    base_path: &Path,
+    session_id: &str,
+    prompt: &str,
+) -> Result<(), String> {
+    let session_dir = base_path.join("sessions").join(session_id);
+    if !session_dir.exists() {
+        return Err(format!("Session not found: {session_id}"));
+    }
+
+    fs::write(session_dir.join("prompt.md"), prompt)
+        .map_err(|e| format!("Failed to write prompt.md: {e}"))
+}
+
 /// Delete a session by ID — removes directory and index entry.
 pub fn delete_session(base_path: &Path, session_id: &str) -> Result<(), String> {
     let session_dir = base_path.join("sessions").join(session_id);
@@ -340,5 +440,71 @@ mod tests {
         assert_eq!(config.version, 1);
         assert_eq!(config.session_limit, 200);
         assert_eq!(config.theme, "dark");
+    }
+
+    #[test]
+    fn test_load_session_image_prefers_compressed() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path().join(".codeeye");
+        init_storage(&base).unwrap();
+
+        let id = create_session(&base, "Test", "proj").unwrap();
+        let session_dir = base.join("sessions").join(&id);
+
+        // Write original and compressed
+        fs::write(session_dir.join("original.png"), b"original").unwrap();
+        fs::write(session_dir.join("compressed.png"), b"compressed").unwrap();
+
+        let loaded = load_session_image(&base, &id).unwrap();
+        let expected = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            b"compressed",
+        );
+        assert_eq!(loaded, expected);
+    }
+
+    #[test]
+    fn test_load_session_image_no_image_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path().join(".codeeye");
+        init_storage(&base).unwrap();
+
+        let id = create_session(&base, "Test", "proj").unwrap();
+        assert!(load_session_image(&base, &id).is_err());
+    }
+
+    #[test]
+    fn test_save_and_load_annotated_image() {
+        use base64::Engine;
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path().join(".codeeye");
+        init_storage(&base).unwrap();
+
+        let id = create_session(&base, "Test", "proj").unwrap();
+        let fake_data = b"fake image bytes";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(fake_data);
+
+        save_annotated_image(&base, &id, &b64).unwrap();
+
+        let saved = fs::read(base.join("sessions").join(&id).join("annotated.png")).unwrap();
+        assert_eq!(saved, fake_data);
+    }
+
+    #[test]
+    fn test_save_session_prompt() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path().join(".codeeye");
+        init_storage(&base).unwrap();
+
+        let id = create_session(&base, "Test", "proj").unwrap();
+        let prompt = "# UI Feedback\n\nSome notes here";
+
+        save_session_prompt(&base, &id, prompt).unwrap();
+
+        let saved = fs::read_to_string(
+            base.join("sessions").join(&id).join("prompt.md"),
+        )
+        .unwrap();
+        assert_eq!(saved, prompt);
     }
 }

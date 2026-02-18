@@ -83,6 +83,15 @@ impl McpConfigAdapter for CursorAdapter {
         // Cursor verification is done via Cursor Settings > MCP (GUI only).
         Ok("Config written. Open Cursor > Settings > MCP to verify.".into())
     }
+
+    fn read_entry(&self) -> Result<String, String> {
+        let config = read_json_config(&Self::config_path_inner())?;
+        let entry = config
+            .get("mcpServers")
+            .and_then(|s| s.get(MCP_SERVER_KEY))
+            .ok_or("CodeEye entry not found in config")?;
+        serde_json::to_string_pretty(entry).map_err(|e| format!("Failed to format entry: {e}"))
+    }
 }
 
 #[cfg(test)]

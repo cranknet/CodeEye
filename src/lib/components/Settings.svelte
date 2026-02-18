@@ -9,7 +9,14 @@
 
   let { onclose, onshowintegrations, onthemechange }: Props = $props();
 
-  type Section = "general" | "labels" | "integrations" | "advanced";
+  import { DEFAULT_PROMPT_TEMPLATE } from "$lib/utils/export";
+
+  type Section =
+    | "general"
+    | "labels"
+    | "integrations"
+    | "mcp_output"
+    | "advanced";
   let activeSection: Section = $state("general");
 
   // ── General settings ──────────────────────────────────
@@ -20,6 +27,13 @@
   let promptPreview = $state(true);
   let gitDiffInPrompt = $state(true);
   let feedbackLoopEnabled = $state(false);
+
+  // ── MCP Output settings ─────────────────────────────
+  let mcpIncludePrompt = $state(true);
+  let mcpIncludeImage = $state(true);
+  let mcpIncludeMetadata = $state(false);
+  let mcpImageMaxRes = $state(1280);
+  let mcpPromptTemplate = $state(DEFAULT_PROMPT_TEMPLATE);
 
   // ── Advanced settings ─────────────────────────────────
   let sessionLimit = $state(200);
@@ -40,6 +54,7 @@
     { id: "general", label: "General", icon: "◎" },
     { id: "labels", label: "Labels", icon: "⊞" },
     { id: "integrations", label: "Integrations", icon: "⊕" },
+    { id: "mcp_output", label: "MCP Output", icon: "⇥" },
     { id: "advanced", label: "Advanced", icon: "⚙" },
   ];
 
@@ -73,6 +88,12 @@
       compressionFormat = (config.compression_format as string) ?? "png";
       compressionQuality = (config.compression_quality as number) ?? 85;
       logLevel = (config.log_level as string) ?? "info";
+      mcpIncludePrompt = (config.mcp_include_prompt as boolean) ?? true;
+      mcpIncludeImage = (config.mcp_include_image as boolean) ?? true;
+      mcpIncludeMetadata = (config.mcp_include_metadata as boolean) ?? false;
+      mcpImageMaxRes = (config.mcp_image_max_resolution as number) ?? 1280;
+      mcpPromptTemplate =
+        (config.mcp_prompt_template as string) || DEFAULT_PROMPT_TEMPLATE;
     } catch (err) {
       console.error("Failed to load config:", err);
     }
@@ -95,6 +116,11 @@
       config.compression_format = compressionFormat;
       config.compression_quality = compressionQuality;
       config.log_level = logLevel;
+      config.mcp_include_prompt = mcpIncludePrompt;
+      config.mcp_include_image = mcpIncludeImage;
+      config.mcp_include_metadata = mcpIncludeMetadata;
+      config.mcp_image_max_resolution = mcpImageMaxRes;
+      config.mcp_prompt_template = mcpPromptTemplate;
       await invoke("save_app_config", { config });
       // Notify parent of theme change so it applies immediately
       onthemechange?.(theme);
@@ -110,9 +136,21 @@
   async function exportDiagnostics() {
     exportingDiagnostics = true;
     try {
-      await invoke("export_diagnostic_bundle");
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, 19);
+      const savePath = await save({
+        defaultPath: `codeeye-diagnostic-${timestamp}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!savePath) {
+        return; // User cancelled
+      }
+      await invoke("export_diagnostic_bundle", { savePath });
       showSaveMessage("Diagnostic bundle exported");
-    } catch (err) {
+    } catch {
       showSaveMessage("Export failed — check logs");
     } finally {
       exportingDiagnostics = false;
@@ -346,7 +384,8 @@
           </p>
           <p class="text-xs text-[var(--text-muted)]">
             Connect CodeEye to your AI coding assistant via MCP (Model Context
-            Protocol). Supported: Claude Code, Codex, Gemini CLI.
+            Protocol). Supported: Claude Code, Gemini CLI, Codex, OpenCode,
+            Cursor.
           </p>
         </div>
 
@@ -375,6 +414,121 @@
           >
             Open Integration Hub
           </button>
+        </div>
+      <!-- ── MCP Output ─────────────────────────── -->
+      {:else if activeSection === "mcp_output"}
+        <div>
+          <p class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+            MCP Output
+          </p>
+          <p class="text-xs text-[var(--text-muted)]">
+            Control what data AI tools receive when they call
+            <code
+              class="px-1 py-0.5 rounded bg-[var(--bg-surface)] font-mono text-[var(--accent)]"
+              >get_ui_feedback</code
+            >.
+          </p>
+        </div>
+
+        <!-- Content toggles -->
+        <div
+          class="space-y-1 rounded-lg border border-[var(--border)] overflow-hidden"
+        >
+          {#each [
+            { id: "mcp-prompt", label: "Include prompt", desc: "Send the generated markdown prompt to AI tools", checked: mcpIncludePrompt, toggle: (v: boolean) => { mcpIncludePrompt = v; } },
+            { id: "mcp-image", label: "Include screenshot", desc: "Send the annotated screenshot as a base64 image block", checked: mcpIncludeImage, toggle: (v: boolean) => { mcpIncludeImage = v; } },
+            { id: "mcp-metadata", label: "Include raw metadata", desc: "Send the full session JSON (annotations, git context, viewport)", checked: mcpIncludeMetadata, toggle: (v: boolean) => { mcpIncludeMetadata = v; } },
+          ] as row, i}
+            <label
+              class="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors
+                hover:bg-[var(--bg-surface-hover)]
+                {i > 0 ? 'border-t border-[var(--border-subtle)]' : ''}"
+              for={row.id}
+            >
+              <input
+                id={row.id}
+                type="checkbox"
+                class="mt-0.5 accent-[#f97316] w-4 h-4 shrink-0 cursor-pointer"
+                checked={row.checked}
+                onchange={(e) => {
+                  row.toggle((e.target as HTMLInputElement).checked);
+                }}
+              >
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-[var(--text-primary)]">
+                  {row.label}
+                </p>
+                <p class="text-xs text-[var(--text-muted)] mt-0.5">
+                  {row.desc}
+                </p>
+              </div>
+            </label>
+          {/each}
+        </div>
+
+        <!-- Image resolution -->
+        <div class="space-y-1.5">
+          <label
+            for="mcp-image-res"
+            class="block text-xs font-semibold text-[var(--text-primary)]"
+          >
+            MCP Image Max Resolution
+          </label>
+          <select
+            id="mcp-image-res"
+            bind:value={mcpImageMaxRes}
+            class="w-full bg-[var(--bg-sunken)] border border-[var(--border)] rounded-md px-3 py-2
+              text-sm text-[var(--text-primary)]
+              focus:outline-none focus:border-[var(--border-focus)] transition-colors"
+          >
+            <option value={800}>800px (fast, smaller payload)</option>
+            <option value={1280}>1280px (default)</option>
+            <option value={1920}>1920px (high detail)</option>
+          </select>
+          <p class="text-xs text-[var(--text-muted)]">
+            Maximum dimension for images sent via MCP
+          </p>
+        </div>
+
+        <!-- Prompt template -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label
+              for="mcp-template"
+              class="block text-xs font-semibold text-[var(--text-primary)]"
+            >
+              Prompt Template
+            </label>
+            <button
+              type="button"
+              class="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+              onclick={() => {
+                mcpPromptTemplate = DEFAULT_PROMPT_TEMPLATE;
+              }}
+            >
+              Reset to Default
+            </button>
+          </div>
+          <textarea
+            id="mcp-template"
+            bind:value={mcpPromptTemplate}
+            rows="10"
+            class="w-full bg-[var(--bg-sunken)] border border-[var(--border)] rounded-md px-3 py-2
+              text-xs text-[var(--text-primary)] font-mono leading-relaxed resize-y
+              focus:outline-none focus:border-[var(--border-focus)] transition-colors"
+            spellcheck="false"
+          ></textarea>
+          <p class="text-xs text-[var(--text-muted)]">
+            Available variables:
+            <code class="text-[var(--accent)]">{"{{page_name}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{project}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{branch}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{suggested_file}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{viewport}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{notes}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{annotations}}"}</code>,
+            <code class="text-[var(--accent)]">{"{{recent_diff}}"}</code>
+          </p>
         </div>
       <!-- ── Advanced ───────────────────────────── -->
       {:else if activeSection === "advanced"}
