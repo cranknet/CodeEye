@@ -10,6 +10,10 @@ export function createCanvasStore() {
   let imageWidth = $state(0);
   let imageHeight = $state(0);
 
+  // Multi-frame support
+  let frames = $state<string[]>([]);
+  let currentFrame = $state(0);
+
   return {
     get zoom() {
       return zoom;
@@ -26,6 +30,18 @@ export function createCanvasStore() {
     get imageHeight() {
       return imageHeight;
     },
+    get frames() {
+      return frames;
+    },
+    get currentFrame() {
+      return currentFrame;
+    },
+    get frameCount() {
+      return frames.length;
+    },
+    get currentImageSrc() {
+      return frames[currentFrame] ?? null;
+    },
 
     setImage(width: number, height: number) {
       imageWidth = width;
@@ -33,6 +49,31 @@ export function createCanvasStore() {
       zoom = 1;
       panX = 0;
       panY = 0;
+    },
+
+    /** Add a frame and switch to it. */
+    addFrame(src: string) {
+      frames = [...frames, src];
+      currentFrame = frames.length - 1;
+    },
+
+    /** Replace all frames (e.g. when loading a single image). */
+    setFrames(srcs: string[]) {
+      frames = srcs;
+      currentFrame = 0;
+    },
+
+    /** Switch to a specific frame index. */
+    setFrame(index: number) {
+      if (index >= 0 && index < frames.length) {
+        currentFrame = index;
+      }
+    },
+
+    /** Clear all frames. */
+    clearFrames() {
+      frames = [];
+      currentFrame = 0;
     },
 
     zoomTo(level: number, cursorX: number, cursorY: number) {

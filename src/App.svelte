@@ -4,6 +4,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Canvas from "$lib/components/Canvas.svelte";
   import ExportBar from "$lib/components/ExportBar.svelte";
+  import FeedbackLoop from "$lib/components/FeedbackLoop.svelte";
   import FirstRun from "$lib/components/FirstRun.svelte";
   import IntegrationHub from "$lib/components/IntegrationHub.svelte";
   import PromptPreview from "$lib/components/PromptPreview.svelte";
@@ -69,8 +70,10 @@
   // Canvas background derived from resolved theme
   let canvasBg = $derived(resolvedTheme === "dark" ? "#1a1a1a" : "#e8e8e8");
 
+  // Derive current image from frame list
+  let imageSrc = $derived(canvasState.currentImageSrc);
+
   // Capture state
-  let imageSrc: string | null = $state(null);
   let isCapturing = $state(false);
   let isDragOver = $state(false);
 
@@ -80,6 +83,7 @@
   let showSettings = $state(false);
   let showIntegrations = $state(false);
   let showFirstRun = $state(false);
+  let showFeedbackLoop = $state(false);
 
   // Derived prompt markdown
   let promptMarkdown = $derived(
@@ -109,7 +113,12 @@
       // Give the OS time to remove the window from the compositor
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       const base64: string = await invoke("capture_screen", { monitorId: 0 });
-      loadImage(`data:image/png;base64,${base64}`);
+      const dataUrl = `data:image/png;base64,${base64}`;
+      if (canvasState.frameCount > 0) {
+        addFrame(dataUrl);
+      } else {
+        loadImage(dataUrl);
+      }
     } catch (err) {
       console.error("Capture failed:", err);
       toastState.error("Screenshot capture failed");
@@ -181,10 +190,15 @@
     }
   }
 
-  /** Load an image from a data URL */
+  /** Load an image as a new single-frame session */
   function loadImage(src: string) {
-    imageSrc = src;
+    canvasState.setFrames([src]);
     annotationState.clear();
+  }
+
+  /** Add an image as an additional frame (batch mode) */
+  function addFrame(src: string) {
+    canvasState.addFrame(src);
   }
 
   /** Handle file drop */
@@ -350,6 +364,47 @@
     </div>
   </div>
 
+  <!-- Frame strip (only when multiple frames) -->
+  {#if canvasState.frameCount > 1}
+    <div
+      class="flex items-center gap-1 px-3 py-1.5 bg-[var(--bg-sunken)] border-b border-[var(--border)] shrink-0 overflow-x-auto"
+    >
+      {#each canvasState.frames as _src, i}
+        <button
+          type="button"
+          class="px-3 py-1 text-xs font-medium rounded-md transition-colors shrink-0
+            {canvasState.currentFrame === i
+              ? 'bg-[var(--accent)] text-[var(--text-on-accent)]'
+              : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-[var(--border)]'}"
+          onclick={() => canvasState.setFrame(i)}
+        >
+          Frame {i + 1}
+        </button>
+      {/each}
+      <button
+        type="button"
+        class="px-2 py-1 text-xs text-[var(--text-faint)] hover:text-[var(--text-secondary)]
+          hover:bg-[var(--bg-surface-hover)] rounded-md transition-colors shrink-0"
+        onclick={startCapture}
+        title="Add another frame"
+      >
+        + Add
+      </button>
+
+      <div class="ml-auto shrink-0">
+        <button
+          type="button"
+          class="px-2.5 py-1 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent-subtle)]
+            rounded-md transition-colors"
+          onclick={() => { showFeedbackLoop = true; }}
+          title="Compare first and last frames"
+        >
+          Compare
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <!-- Editor area: Canvas + Sidebar -->
   <div class="flex flex-1 min-h-0">
     <!-- Canvas (fills remaining space) -->
@@ -445,6 +500,7 @@
     <!-- Sidebar -->
     <Sidebar
       {annotationState}
+      {canvasState}
       {selectedId}
       onselect={(id) => {
         selectedId = id;
@@ -515,6 +571,15 @@
 
 {#if showFirstRun}
   <FirstRun oncomplete={handleFirstRunComplete} />
+{/if}
+
+{#if showFeedbackLoop && canvasState.frameCount >= 2}
+  <FeedbackLoop
+    beforeSrc={canvasState.frames[0]}
+    afterSrc={canvasState.frames[canvasState.frameCount - 1]}
+    annotations={annotationState.annotations}
+    onclose={() => { showFeedbackLoop = false; }}
+  />
 {/if}
 
 <Toast {toastState} />

@@ -29,6 +29,15 @@
     onselect,
   }: Props = $props();
 
+  // Filter annotations by current frame for rendering and hit-testing
+  let visibleAnnotations = $derived(
+    canvasState.frameCount > 1
+      ? annotationState.annotations.filter(
+          (a) => a.frame === canvasState.currentFrame
+        )
+      : annotationState.annotations
+  );
+
   let canvasEl: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
   let image: HTMLImageElement | null = $state(null);
@@ -42,6 +51,7 @@
 
   // Panning state
   let isPanning = $state(false);
+  let spaceHeld = $state(false);
   let lastPanX = 0;
   let lastPanY = 0;
 
@@ -94,6 +104,8 @@
       canvasEl.width = width * devicePixelRatio;
       canvasEl.height = height * devicePixelRatio;
       ctx.scale(devicePixelRatio, devicePixelRatio);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
 
       // Clear with theme-aware background
       ctx.fillStyle = canvasBg;
@@ -113,9 +125,7 @@
 
       // Draw resize handles for selected
       if (selectedId) {
-        const sel = annotationState.annotations.find(
-          (a) => a.id === selectedId
-        );
+        const sel = visibleAnnotations.find((a) => a.id === selectedId);
         if (sel) {
           drawResizeHandles(sel);
         }
@@ -192,7 +202,7 @@
   // ─── Annotation Rendering ──────────────────────────────
 
   function drawAnnotations() {
-    for (const ann of annotationState.annotations) {
+    for (const ann of visibleAnnotations) {
       ctx.save();
       ctx.translate(canvasState.panX, canvasState.panY);
       ctx.scale(canvasState.zoom, canvasState.zoom);
@@ -386,11 +396,16 @@
     );
   }
 
-  /** Handle select-tool mouse down: resize handles, hit-test, or deselect */
-  function handleSelectDown(screenPos: Point, imgPos: Point) {
+  /** Handle select-tool mouse down: resize handles, hit-test, or fallback pan */
+  function handleSelectDown(
+    screenPos: Point,
+    imgPos: Point,
+    clientX: number,
+    clientY: number
+  ) {
     // Priority 1: check resize handles on selected annotation
     if (selectedId) {
-      const sel = annotationState.annotations.find((a) => a.id === selectedId);
+      const sel = visibleAnnotations.find((a) => a.id === selectedId);
       if (sel) {
         const hIdx = hitTestHandles(screenPos, sel);
         if (hIdx >= 0) {
@@ -417,15 +432,19 @@
       dragOrigBounds = { ...hit.bounds };
       dragOrigPoints = hit.points ? hit.points.map((p) => ({ ...p })) : null;
     } else {
+      // No annotation hit — deselect and start fallback pan
       selectedId = null;
       onselect?.(null);
+      isPanning = true;
+      lastPanX = clientX;
+      lastPanY = clientY;
     }
   }
 
   /** Find the topmost annotation at a given image-space point */
   function findTopmostAnnotation(imgPos: Point): Annotation | null {
-    for (let i = annotationState.annotations.length - 1; i >= 0; i--) {
-      const ann = annotationState.annotations[i];
+    for (let i = visibleAnnotations.length - 1; i >= 0; i--) {
+      const ann = visibleAnnotations[i];
       if (hitTestAnnotation(imgPos, ann)) {
         return ann;
       }
@@ -446,6 +465,14 @@
       return;
     }
 
+    // Spacebar+left-click → pan (works in any tool mode)
+    if (spaceHeld) {
+      isPanning = true;
+      lastPanX = e.clientX;
+      lastPanY = e.clientY;
+      return;
+    }
+
     const rect = canvasEl.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
@@ -453,7 +480,7 @@
     const imgPos = canvasState.screenToImage(screenX, screenY);
 
     if (toolState.activeTool === "select") {
-      handleSelectDown(screenPos, imgPos);
+      handleSelectDown(screenPos, imgPos, e.clientX, e.clientY);
       return;
     }
 
@@ -565,6 +592,7 @@
           label: toolState.activeQuickLabel ?? "",
           severity: toolState.activeSeverity,
           color: toolState.activeColor,
+          frame: canvasState.currentFrame,
         });
       }
     } else if (tool === "arrow") {
@@ -584,6 +612,7 @@
           label: toolState.activeQuickLabel ?? "",
           severity: toolState.activeSeverity,
           color: toolState.activeColor,
+          frame: canvasState.currentFrame,
         });
       }
     } else if (tool === "freehand" && freehandPoints.length > 2) {
@@ -603,6 +632,7 @@
         label: toolState.activeQuickLabel ?? "",
         severity: toolState.activeSeverity,
         color: toolState.activeColor,
+        frame: canvasState.currentFrame,
       });
     } else if (tool === "text") {
       annotationState.add({
@@ -611,6 +641,7 @@
         label: toolState.activeQuickLabel || "Text",
         severity: toolState.activeSeverity,
         color: toolState.activeColor,
+        frame: canvasState.currentFrame,
       });
     }
 
@@ -684,7 +715,37 @@
 
   // ─── Keyboard Shortcuts ──────────────────────────────
 
+  function isTextInput(e: KeyboardEvent): boolean {
+    const target = e.target as HTMLElement;
+    return target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+  }
+
+  const TOOL_KEYS: Record<string, typeof toolState.activeTool> = {
+    v: "select",
+    s: "rectangle",
+    c: "circle",
+    a: "arrow",
+    f: "freehand",
+    t: "text",
+  };
+
+  function handleToolShortcut(e: KeyboardEvent) {
+    if (isTextInput(e) || e.metaKey || e.ctrlKey || e.altKey) {
+      return;
+    }
+    if (TOOL_KEYS[e.key]) {
+      toolState.setTool(TOOL_KEYS[e.key]);
+    }
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
+    // Spacebar hold for pan mode
+    if (e.code === "Space" && !e.repeat && !isTextInput(e)) {
+      e.preventDefault();
+      spaceHeld = true;
+      return;
+    }
+
     // Undo/Redo
     if ((e.metaKey || e.ctrlKey) && e.key === "z") {
       e.preventDefault();
@@ -711,28 +772,24 @@
       return;
     }
 
-    // Tool shortcuts (only when not in an input)
-    const target = e.target as HTMLElement;
-    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
-      return;
-    }
+    // Tool shortcuts
+    handleToolShortcut(e);
+  }
 
-    const toolMap: Record<string, typeof toolState.activeTool> = {
-      v: "select",
-      s: "rectangle",
-      c: "circle",
-      a: "arrow",
-      f: "freehand",
-      t: "text",
-    };
-
-    if (toolMap[e.key] && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      toolState.setTool(toolMap[e.key]);
+  function handleKeyUp(e: KeyboardEvent) {
+    if (e.code === "Space") {
+      spaceHeld = false;
     }
   }
 
   // Derive cursor from context
   let cursor = $derived.by(() => {
+    if (isPanning) {
+      return "grabbing";
+    }
+    if (spaceHeld) {
+      return "grab";
+    }
     if (dragMode === "move") {
       return "move";
     }
@@ -750,7 +807,7 @@
   });
 </script>
 
-<svelte:window onkeydown={handleKeyDown} />
+<svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} />
 
 <canvas
   bind:this={canvasEl}

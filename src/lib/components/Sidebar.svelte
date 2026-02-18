@@ -3,10 +3,12 @@
     Annotation,
     createAnnotationStore,
   } from "$lib/state/annotations.svelte";
+  import type { createCanvasStore } from "$lib/state/canvas.svelte";
   import CommentPopup from "./CommentPopup.svelte";
 
   interface Props {
     annotationState: ReturnType<typeof createAnnotationStore>;
+    canvasState: ReturnType<typeof createCanvasStore>;
     generalNotes: string;
     onnoteschange: (notes: string) => void;
     onpagechange: (name: string) => void;
@@ -17,6 +19,7 @@
 
   let {
     annotationState,
+    canvasState,
     selectedId,
     onselect,
     pageName,
@@ -24,6 +27,15 @@
     onpagechange,
     onnoteschange,
   }: Props = $props();
+
+  // Filter annotations by current frame
+  let visibleAnnotations = $derived(
+    canvasState.frameCount > 1
+      ? annotationState.annotations.filter(
+          (a) => a.frame === canvasState.currentFrame
+        )
+      : annotationState.annotations
+  );
 
   let editingAnnotation: Annotation | null = $state(null);
 
@@ -108,13 +120,13 @@
       Annotations
     </span>
     <span class="text-xs font-mono text-[var(--text-faint)]">
-      {annotationState.annotations.length}
+      {visibleAnnotations.length}
     </span>
   </div>
 
   <!-- Annotation list -->
   <div class="flex-1 overflow-y-auto min-h-0">
-    {#if annotationState.annotations.length === 0}
+    {#if visibleAnnotations.length === 0}
       <div class="px-3 py-8 text-center">
         <div
           class="w-10 h-10 rounded-xl bg-[var(--bg-sunken)] border border-[var(--border)]
@@ -129,7 +141,7 @@
       </div>
     {:else}
       <div class="px-2 pb-3 space-y-0.5">
-        {#each annotationState.annotations as ann (ann.id)}
+        {#each visibleAnnotations as ann (ann.id)}
           <div
             class="group flex items-start gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors
               {selectedId === ann.id
