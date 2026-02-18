@@ -1,4 +1,5 @@
 mod logging;
+mod storage;
 
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -39,6 +40,14 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Initialize storage
+            let base = storage::default_base_path();
+            storage::init_storage(&base).map_err(|e| {
+                log::error!("Failed to initialize storage: {}", e);
+                e
+            })?;
+            log::info!("Storage initialized at {:?}", base);
 
             log::info!("CodeEye starting up");
             Ok(())
