@@ -117,12 +117,71 @@
     showFirstRun = false;
   }
 
+  /** Load an image from a data URL or blob URL */
+  function loadImage(src: string) {
+    imageSrc = src;
+    annotationState.clear();
+  }
+
+  /** Handle file drop */
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    isDragOver = false;
+    const file = e.dataTransfer?.files[0];
+    if (file?.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        loadImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    isDragOver = true;
+  }
+
+  function handleDragLeave() {
+    isDragOver = false;
+  }
+
+  /** Handle clipboard paste */
+  function handlePaste(e: ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const blob = item.getAsFile();
+        if (blob) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            loadImage(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        }
+        break;
+      }
+    }
+  }
+
+  let isDragOver = $state(false);
+
   // Load sessions on mount
   sessionState.loadSessions();
 </script>
 
+<svelte:window onpaste={handlePaste} />
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <main
-  class="h-screen w-screen bg-[#0a0a0a] text-[#fafafa] flex flex-col overflow-hidden"
+  class="h-screen w-screen bg-[#0a0a0a] text-[#fafafa] flex flex-col overflow-hidden
+    {isDragOver ? 'ring-2 ring-inset ring-[#f97316]/40' : ''}"
+  ondrop={handleDrop}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
 >
   <!-- Toolbar -->
   <Toolbar {toolState} {annotationState} />
