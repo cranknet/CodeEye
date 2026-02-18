@@ -211,7 +211,13 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&capture_item, &open_item, &separator, &quit_item])?;
 
+            let tray_icon = app
+                .default_window_icon()
+                .cloned()
+                .expect("default window icon must be set in tauri.conf.json");
+
             let _tray = TrayIconBuilder::new()
+                .icon(tray_icon)
                 .tooltip("CodeEye — click to capture")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
