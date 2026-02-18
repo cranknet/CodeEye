@@ -30,7 +30,7 @@
 
   // Filter annotations by current frame
   let visibleAnnotations = $derived(
-    canvasState.frameCount > 1
+    canvasState.frameCount > 0
       ? annotationState.annotations.filter(
           (a) => a.frame === canvasState.currentFrame
         )

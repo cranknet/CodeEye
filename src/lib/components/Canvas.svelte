@@ -31,7 +31,7 @@
 
   // Filter annotations by current frame for rendering and hit-testing
   let visibleAnnotations = $derived(
-    canvasState.frameCount > 1
+    canvasState.frameCount > 0
       ? annotationState.annotations.filter(
           (a) => a.frame === canvasState.currentFrame
         )
@@ -88,7 +88,13 @@
       const img = new Image();
       img.onload = () => {
         image = img;
-        canvasState.setImage(img.width, img.height);
+        // Only reset zoom/pan when image dimensions actually change
+        const sameSize =
+          img.width === canvasState.imageWidth &&
+          img.height === canvasState.imageHeight;
+        if (!sameSize) {
+          canvasState.setImage(img.width, img.height);
+        }
       };
       img.src = imageSrc;
     }

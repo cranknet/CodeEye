@@ -60,6 +60,8 @@
   }
 
   function handleKeyDown(e: KeyboardEvent) {
+    // Stop all keyboard events from reaching Canvas behind the modal
+    e.stopPropagation();
     if (e.key === "Escape") {
       onclose();
     }
@@ -167,7 +169,7 @@
                 src={beforeSrc}
                 alt="Before"
                 class="absolute inset-0 h-full object-contain"
-                style="width: {100 / (sliderPos / 100)}%;"
+                style="width: {sliderPos > 0 ? 100 / (sliderPos / 100) : 100}%;"
                 draggable="false"
               >
             </div>

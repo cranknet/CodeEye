@@ -577,7 +577,9 @@
   <FeedbackLoop
     beforeSrc={canvasState.frames[0]}
     afterSrc={canvasState.frames[canvasState.frameCount - 1]}
-    annotations={annotationState.annotations}
+    annotations={annotationState.annotations.filter(
+      (a) => a.frame === 0 || a.frame === canvasState.frameCount - 1
+    )}
     onclose={() => { showFeedbackLoop = false; }}
   />
 {/if}
